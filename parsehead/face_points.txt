@@ -1,0 +1,21 @@
+Oral commisure (L) x, 
+Oral commisure (R) x, 133
+Lateral canthus (L) x
+Lateral canthus (R) x, 1450
+Palpebral fissure (RU) x, 9807
+Palpebral fissure (RL) x, 9928
+Palpebral fissure (LU) x
+Palpebral fissure (LL) x
+Depressor (L) x, 14813
+Depressor (R) x, 656
+Depressor (M) x, 12
+Iris (M) x, 286
+Iris (L) x, 257
+Nasal ala (L) x
+Nasal ala (R) x, 5853
+Medial brow (L) x
+Medial brow (R) x, 7669
+Malar eminence (L) x
+Malar eminence (R) x, (peak cheek position when smiling) 6675
+Dental show (Top) x, 22524
+Dental show (Bottom) x, 5643

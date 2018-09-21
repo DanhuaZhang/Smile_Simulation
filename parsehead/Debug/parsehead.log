@@ -1,0 +1,3 @@
+﻿  main.cpp
+c:\graduate\2018 fall\8777\parsehead_vertex_buffer\parsehead\main.cpp(99): warning C4305: 'initializing': truncation from 'double' to 'float'
+  parsehead.vcxproj -> C:\Graduate\2018 fall\8777\parsehead_vertex_buffer\Debug\parsehead.exe
