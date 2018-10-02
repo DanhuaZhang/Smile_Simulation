@@ -19,3 +19,5 @@ Malar eminence (L) x
 Malar eminence (R) x, (peak cheek position when smiling) 6675
 Dental show (Top) x, 22524
 Dental show (Bottom) x, 5643
+
+all: [12, 133, 257, 286, 656, 1450, 5643, 5853, 6675, 9807, 9928, 11111, 11234, 11350, 11390, 11736, 12510, 16636, 16851, 17655, 20663, 20778, 22516, 22524]

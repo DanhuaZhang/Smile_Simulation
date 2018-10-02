@@ -1,0 +1,13 @@
+#define ROOT_DIR "@PROJECT_SOURCE_DIR@"
+#define SHADER_DIR "@PROJECT_SOURCE_DIR@/parsehead"
+#define MESH_DIR "@PROJECT_SOURCE_DIR@/parsehead/face_models"
+#define TEX_DIR "@PROJECT_SOURCE_DIR@/parsehead/texture"
+
+#define PF_WIN32 1
+#define PF_LINUX 2
+
+#ifdef _WIN32
+#define PLATFORM_FLAG PF_WIN32
+#elif __linux__
+#define PLATFORM_FLAG PF_LINUX
+#endif

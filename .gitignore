@@ -1,0 +1,18 @@
+#**************** General files to always ignore ************************
+
+imgui.ini
+Config.h
+*.blend1
+
+#**************** General folders to always ignore ************************
+
+cmake
+.vscode
+release
+Release
+debug
+Debug
+x64
+bin
+lib
+build
