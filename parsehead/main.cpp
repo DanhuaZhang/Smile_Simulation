@@ -8,7 +8,7 @@ int main(int argc, char *argv[]) {
 
 	if( argc > 1 ) screen_width = (int)strtol(argv[1], NULL, 10);
 	if( argc > 2 ) screen_height = (int)strtol(argv[2], NULL, 10);
-	
+
 	//Initialize SDL
 	SDL_Init(SDL_INIT_VIDEO);
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
@@ -31,14 +31,11 @@ int main(int argc, char *argv[]) {
 		return -1;
 	}
 
-	//Load CSV file
-	GT_Variable gt_var = ParseCSVwithSpace(SHADER_DIR "/28063_s_canon.csv");
-
 	//Load face model
 	GLuint tex0 = AllocateTexture(TEX_DIR "/head_BaseColor.bmp", 0);
 	int face_num = 7;
 	int model_numVerts = 0;
-	int current_changing = 0;
+
 	//edge stores the bound of each facial feature
 	int edgeidx[] = { 133,1450,9807,9928,14813,656,12,5853,7669,6675,22524,5643 };
 	int edge_numVerts = sizeof(edgeidx) / sizeof(int);
@@ -63,7 +60,6 @@ int main(int argc, char *argv[]) {
 	int iris_numVerts = sizeof(irisidx) / sizeof(int);
 	glm::vec3* iris = (glm::vec3*)malloc(sizeof(glm::vec3) * edge_numVerts);
 	float* eyes = ParseObj(MESH_DIR "/eyes.obj", eye_numVerts, irisidx, iris, iris_numVerts);
-	float scale_size = glm::distance(iris[0], iris[1]);
 
 	//Load mouth model
 	GLuint tex2 = AllocateTexture(TEX_DIR "/teeth_n_gums_BaseColor.bmp", 2);
@@ -88,22 +84,16 @@ int main(int argc, char *argv[]) {
 	IMGUI_CHECKVERSION();
 	ImGui::CreateContext();
 	ImGuiIO& io = ImGui::GetIO(); (void)io;
-	//io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;  // Enable Keyboard Controls
 	ImGui_ImplSdlGL3_Init(window);
 
 	// Setup style
 	ImGui::StyleColorsDark();
-	//ImGui::StyleColorsClassic();
 
-	glm::vec3 camera_position = glm::vec3(0.0f, 0.0f, 55.0f);  //Cam Position
-	glm::vec3 look_point = glm::vec3(0.0f, 0.0f, 0.0f);  //Look at point
+	glm::vec3 camera_position = glm::vec3(0.0f, 0.0f, 40.0f);  //Cam Position
+	glm::vec3 look_point = glm::vec3(0.0f, -8.0f, 0.0f);  //Look at point
 	glm::vec3 up_vector = glm::vec3(0.0f, 1.0f, 0.0f); //Up
 
 	glm::mat4 view = glm::lookAt(camera_position, look_point, up_vector);
-	float scale = 0.02;
-	float right = (float)screen_width*scale;
-	float top = (float)screen_height*scale;
-	//glm::mat4 proj = glm::ortho(-right, right, -top, top, 0.1f, 10000.0f);
 	glm::mat4 proj = glm::perspective(3.14f / 4, aspect, 0.1f, 10000.0f); //FOV, aspect, near, far
 
 	SDL_Event windowEvent;
@@ -136,11 +126,10 @@ int main(int argc, char *argv[]) {
 	}
 	
 	// 8 values per edge (x, y, z, w) 
-	// ? whats w/ the third value: 2 
+	// ? whats w/ the third value
 	float* point = (float *)calloc(8 * edge_numVerts * 2, sizeof(float));
 
 	bool show_window = false;
-	ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
 
 	bool start = false;
 	bool quit = false;
@@ -232,8 +221,6 @@ int main(int argc, char *argv[]) {
 		glUniformMatrix4fv(uniView, 1, GL_FALSE, glm::value_ptr(view));
 
 		glm::mat4 modelmat(1.0f);
-		//modelmat = glm::translate(-iris[0]);
-		//modelmat = glm::scale(glm::vec3(1 / scale_size));
 		glUniformMatrix4fv(uniModel, 1, GL_FALSE, glm::value_ptr(modelmat));
 
 		glDrawArrays(GL_TRIANGLES, 0, model_numVerts);
@@ -254,9 +241,6 @@ int main(int argc, char *argv[]) {
 		glUniformMatrix4fv(uniView, 1, GL_FALSE, glm::value_ptr(view));
 
 		glm::mat4 pointmat(1.0f);
-		//pointmat = glm::translate(glm::vec3(0,0,0.1));
-		//pointmat = glm::translate(-iris[0]);
-		//pointmat = glm::scale(glm::vec3(1 / scale_size));
 		glUniformMatrix4fv(uniModel, 1, GL_FALSE, glm::value_ptr(pointmat));
 
 		glDrawArrays(GL_POINTS, 0, edge_numVerts*2);
@@ -279,13 +263,9 @@ int main(int argc, char *argv[]) {
 		glUniformMatrix4fv(uniView, 1, GL_FALSE, glm::value_ptr(view));
 
 		glm::mat4 eyemat(1.0f);
-		//eyemat = glm::translate(-iris[0]);
-		//printf("iris[0]: %f,%f,%f\n", iris[0].x, iris[0].y, iris[0].z);
-		//printf("scale_size: %f\n", scale_size);
-		//eyemat = glm::scale(glm::vec3(1 / scale_size));
 		glUniformMatrix4fv(uniModel, 1, GL_FALSE, glm::value_ptr(eyemat));
 
-		glDrawArrays(GL_POINTS, 0, eye_numVerts);
+		glDrawArrays(GL_TRIANGLES, 0, eye_numVerts);
 		glBindVertexArray(0);
 
 		//Load the teeth to buffer
@@ -300,16 +280,14 @@ int main(int argc, char *argv[]) {
 		glUniform1i(glGetUniformLocation(ShaderProgram, "tex2"), 2);
 		glUniform1i(uniTexID, 2);
 
-		glBindVertexArray(vao_teeth);
+		glBindVertexArray(vao_teeth);	
 		glUniformMatrix4fv(uniProj, 1, GL_FALSE, glm::value_ptr(proj));
 		glUniformMatrix4fv(uniView, 1, GL_FALSE, glm::value_ptr(view));
 
 		glm::mat4 teethmat(1.0f);
-		//teethmat = glm::translate(-iris[0]);
-		//teethmat = glm::scale(glm::vec3(1 / scale_size));
 		glUniformMatrix4fv(uniModel, 1, GL_FALSE, glm::value_ptr(teethmat));
 
-		glDrawArrays(GL_POINTS, 0, teeth_numVerts);
+		glDrawArrays(GL_TRIANGLES, 0, teeth_numVerts);
 		glBindVertexArray(0);
 
 		static char frame[4] = { "20" };

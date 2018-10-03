@@ -102,6 +102,7 @@ endif( UNIX )
 
 set( HEADERS 
 	"${PROJECT_SOURCE_DIR}/parsehead/stdafx.h"
+	"${PROJECT_SOURCE_DIR}/parsehead/blendcalc.h"
 )
 
 set( SOURCES
@@ -110,6 +111,7 @@ set( SOURCES
 	"${PROJECT_SOURCE_DIR}/parsehead/imgui/imgui_draw.cpp"
 	"${PROJECT_SOURCE_DIR}/parsehead/imgui/imgui_impl_sdl_gl3.cpp"
 	"${PROJECT_SOURCE_DIR}/parsehead/stdafx.cpp"
+	"${PROJECT_SOURCE_DIR}/parsehead/blendcalc.cpp"
 	"${PROJECT_SOURCE_DIR}/parsehead/main.cpp"
 )
 
@@ -120,6 +122,15 @@ find_path(GLM_PATH glm.hpp
 	${PROJECT_SOURCE_DIR}/parsehead/glm)
 if(NOT GLM_PATH)
 	message(FATAL_ERROR "GLM include not found")
+endif()
+
+find_path(EIGEN_PATH Eigen/Core
+	PATHS
+	${PROJECT_SOURCE_DIR}/parsehead )
+if(NOT EIGEN_PATH)
+	message(FATAL_ERROR "EIGEN_PATH Eigen Core include not found")
+else()
+	message(STATUS "EIGEN_PATH Eigen Core include found")
 endif()
 
 # add shaders to build
