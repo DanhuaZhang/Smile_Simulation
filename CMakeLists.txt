@@ -36,14 +36,13 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # add sdl2 location to environment variables for project
 if( MSVC )
-	set(ENV{SDL2DIR} ${CMAKE_CURRENT_SOURCE_DIR}/SDL2-2.0.7)
+	set(ENV{SDL2DIR} "${PROJECT_SOURCE_DIR}/SDL2-2.0.8")
 endif()
 
 # includes cmake/FindSDL2.cmake and sets module path
 set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
 find_package(SDL2 REQUIRED)
-find_package(SDL2_image REQUIRED)
-include_directories(${SDL2_INCLUDE_DIR} ${SDL2_IMAGE_INCLUDE_DIR})
+include_directories(${SDL2_INCLUDE_DIR})
 
 ###########################################################################
 
@@ -146,6 +145,9 @@ add_executable( smile_sim
 	${SHADER_SOURCES}
 )
 
+configure_file( "${PROJECT_SOURCE_DIR}/SDL2-2.0.8/lib/x86/SDL2.dll"
+				"${PROJECT_SOURCE_DIR}/bin/SDL2.dll" COPYONLY)
+
 target_include_directories( smile_sim PUBLIC
 	"${PROJECT_SOURCE_DIR}/parsehead/imgui"
 	"${PROJECT_SOURCE_DIR}/parsehead/glad"
@@ -155,9 +157,9 @@ target_include_directories( smile_sim PUBLIC
 ###########################################################################
 
 if(UNIX)
-	target_link_libraries( smile_sim ${SDL2_LIBRARY} ${SDL2_IMAGE_LIBRARY} "-ldl" )
+	target_link_libraries( smile_sim ${SDL2_LIBRARY} "-ldl" )
 elseif(MSVC)
-    target_link_libraries( smile_sim ${SDL2_LIBRARY} ${SDL2_IMAGE_LIBRARY} )
+    target_link_libraries( smile_sim ${SDL2_LIBRARY} )
 endif(UNIX)
 
 ###########################################################################

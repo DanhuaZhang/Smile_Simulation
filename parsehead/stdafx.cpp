@@ -611,7 +611,7 @@ GLuint LoadToVAO(GLuint shaderprogram) {
 }
 
 GLuint AllocateTexture(const char* tex_filename, int i) {
-	SDL_Surface* surface = IMG_Load(tex_filename);
+	SDL_Surface* surface = SDL_LoadBMP(tex_filename);
 	if (surface == NULL) { //If it failed, print the error
 		printf("Error: \"%s\"\n", SDL_GetError()); 
 		exit(1);

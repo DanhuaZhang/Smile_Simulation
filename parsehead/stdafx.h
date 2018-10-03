@@ -13,7 +13,7 @@
 #include <SDL.h>
 #include <SDL_opengl.h>
 #endif
-#include <SDL_image.h>
+//#include <SDL_image.h>
 
 #define GLM_FORCE_RADIANS
 #define MAX_CHARACTER 1024
