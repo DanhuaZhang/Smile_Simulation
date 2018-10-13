@@ -1,0 +1,2 @@
+face top (head top): -0.001, 6.520, -0.048
+face bottom (jaw): -0.001, -8.882, 6.537

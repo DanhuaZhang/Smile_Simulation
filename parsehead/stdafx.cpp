@@ -1,29 +1,8 @@
 #include "stdafx.h"
 
-void GTAllocate(GT_Variable &gt_var, int size){
-	gt_var.size = size;
-	gt_var.time = (float *)malloc(sizeof(float)*size);
-	gt_var.Lateral_canthus_L = (glm::vec2 *)malloc(sizeof(glm::vec2)*size);
-	gt_var.Lateral_canthus_R = (glm::vec2 *)malloc(sizeof(glm::vec2)*size);
-
-	gt_var.Palpebral_fissure_RU = (glm::vec2 *)malloc(sizeof(glm::vec2)*size);
-	gt_var.Palpebral_fissure_RL = (glm::vec2 *)malloc(sizeof(glm::vec2)*size);
-	gt_var.Palpebral_fissure_LU = (glm::vec2 *)malloc(sizeof(glm::vec2)*size);
-	gt_var.Palpebral_fissure_LL = (glm::vec2 *)malloc(sizeof(glm::vec2)*size);
-
-	gt_var.Depressor_L = (glm::vec2 *)malloc(sizeof(glm::vec2)*size);
-	gt_var.Depressor_R = (glm::vec2 *)malloc(sizeof(glm::vec2)*size);
-	gt_var.Depressor_M = (glm::vec2 *)malloc(sizeof(glm::vec2)*size);
-
-	gt_var.Nasal_ala_L = (glm::vec2 *)malloc(sizeof(glm::vec2)*size);
-	gt_var.Nasal_ala_R = (glm::vec2 *)malloc(sizeof(glm::vec2)*size);
-
-	gt_var.Medial_brow_L = (glm::vec2 *)malloc(sizeof(glm::vec2)*size);
-	gt_var.Medial_brow_R = (glm::vec2 *)malloc(sizeof(glm::vec2)*size);
-
-	gt_var.Malar_eminence_L = (glm::vec2 *)malloc(sizeof(glm::vec2)*size);
-	gt_var.Malar_eminence_R = (glm::vec2 *)malloc(sizeof(glm::vec2)*size);
-}
+float unit = 10;
+glm::vec2 trans;
+float scale;
 
 float* ParseObj(const char* filename, int &model_numVerts, const int edgeidx[], glm::vec3** edge, const int face_id, const int edge_numVerts) {
 	//printf("Parsing the obj file %s:\n", filename);
@@ -120,6 +99,19 @@ float* ParseObj(const char* filename, int &model_numVerts, const int edgeidx[], 
 	}
 	fclose(fp);
 
+	for (int i = 0; i < edge_numVerts; i++) {
+		//edge[face_id][i] = vertex[edgeidx[i]-1];
+		edge[face_id][i] = vertex[edgeidx[i]];
+	}
+
+	//for (int i = 0; i < edge_numVerts; i++) {
+	//	printf("%f ", edge[face_id][i].x);
+	//	printf("%f ", edge[face_id][i].y);
+	//	printf("%f ", edge[face_id][i].z);
+	//	printf("\n");
+	//}
+	//printf("\n");
+
 	//load to opengl, stored in model
 	//note that the indices in face starts from 1 rather than 0
 	model_numVerts = (num_face - num_triangle) * 6 + num_triangle * 3;
@@ -147,7 +139,7 @@ float* ParseObj(const char* filename, int &model_numVerts, const int edgeidx[], 
 
 			//texture
 			model[j + 6] = texture[face[i + 1] - 1].x;
-			model[j + 7] = 1-texture[face[i + 1] - 1].y;
+			model[j + 7] = 1 - texture[face[i + 1] - 1].y;
 		}
 
 		//repeat the first and the third vertex in the face directive
@@ -169,7 +161,7 @@ float* ParseObj(const char* filename, int &model_numVerts, const int edgeidx[], 
 
 				//texture
 				model[j + 6] = texture[face[i + 1] - 1].x;
-				model[j + 7] = 1-texture[face[i + 1] - 1].y;
+				model[j + 7] = 1 - texture[face[i + 1] - 1].y;
 
 				i += 6;
 			}
@@ -182,10 +174,6 @@ float* ParseObj(const char* filename, int &model_numVerts, const int edgeidx[], 
 			i += 3;
 		}
 		j += 8;
-	}
-
-	for (int i = 0; i < edge_numVerts; i++) {
-		edge[face_id][i] = vertex[edgeidx[i]];
 	}
 
 	free(charline);
@@ -284,6 +272,11 @@ float* ParseObj(const char* filename, int &model_numVerts, const int edgeidx[], 
 	}
 	fclose(fp);
 
+	for (int i = 0; i < edge_numVerts; i++) {
+		edge[i] = vertex[edgeidx[i]];
+		//edge[i] = vertex[edgeidx[i] - 1];
+	}
+
 	//load to opengl, stored in model
 	//note that the indices in face starts from 1 rather than 0
 	model_numVerts = (num_face - num_triangle) * 6 + num_triangle * 3;
@@ -344,10 +337,6 @@ float* ParseObj(const char* filename, int &model_numVerts, const int edgeidx[], 
 			i += 3;
 		}
 		j += 8;
-	}
-
-	for (int i = 0; i < edge_numVerts; i++) {
-		edge[i] = vertex[edgeidx[i]];
 	}
 
 	free(charline);
@@ -522,7 +511,7 @@ float* ParseObj(const char* filename, int &model_numVerts) {
 	return model;
 }
 
-GT_Variable ParseCSVwithSpace(const char* filename) {
+void GetCSVFile(Eigen::MatrixXf &m, const char* filename, int pnum) {
 	FILE* fp = fopen(filename, "r");
 	if (!fp) {
 		printf("Error! Cannot open the file!\nPlease check the path\n");
@@ -530,54 +519,22 @@ GT_Variable ParseCSVwithSpace(const char* filename) {
 	}
 
 	char *charline = (char*)malloc(MAX_CHARACTER * sizeof(char));
-	int cnt = 0;
+	int col = 0;
 	// estimate the total line numbers of the data file
 	while (fgets(charline, MAX_CHARACTER, fp)) {
-		cnt++;
+		col++;
 	}
 	rewind(fp);
 
-	GT_Variable gt_var;
-	GTAllocate(gt_var, cnt);
-	cnt = 0;
-	while (fgets(charline, MAX_CHARACTER, fp)) {
-		sscanf(charline, "%f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f",
-			&gt_var.time[cnt], &gt_var.Lateral_canthus_L[cnt].x, &gt_var.Lateral_canthus_L[cnt].y,
-			&gt_var.Lateral_canthus_R[cnt].x, &gt_var.Lateral_canthus_R[cnt].y, 
-			&gt_var.Palpebral_fissure_RU[cnt].x, &gt_var.Palpebral_fissure_RU[cnt].y,
-			&gt_var.Palpebral_fissure_RL[cnt].x, &gt_var.Palpebral_fissure_RL[cnt].y,
-			&gt_var.Palpebral_fissure_LU[cnt].x, &gt_var.Palpebral_fissure_LU[cnt].y,
-			&gt_var.Palpebral_fissure_LL[cnt].x, &gt_var.Palpebral_fissure_LL[cnt].y,
-			&gt_var.Depressor_L[cnt].x, &gt_var.Depressor_L[cnt].y,
-			&gt_var.Depressor_R[cnt].x, &gt_var.Depressor_R[cnt].y,
-			&gt_var.Depressor_M[cnt].x, &gt_var.Depressor_M[cnt].y,
-			&gt_var.Nasal_ala_L[cnt].x, &gt_var.Nasal_ala_L[cnt].y,
-			&gt_var.Nasal_ala_R[cnt].x, &gt_var.Nasal_ala_R[cnt].y,
-			&gt_var.Medial_brow_L[cnt].x, &gt_var.Medial_brow_L[cnt].y,
-			&gt_var.Medial_brow_R[cnt].x, &gt_var.Medial_brow_R[cnt].y,
-			&gt_var.Malar_eminence_L[cnt].x, &gt_var.Malar_eminence_L[cnt].y,
-			&gt_var.Malar_eminence_R[cnt].x, &gt_var.Malar_eminence_R[cnt].y);
-		/*printf(charline, "%f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f\n",
-			gt_var.time[cnt], gt_var.Lateral_canthus_L[cnt].x, gt_var.Lateral_canthus_L[cnt].y,
-			gt_var.Lateral_canthus_R[cnt].x, gt_var.Lateral_canthus_R[cnt].y,
-			gt_var.Palpebral_fissure_RU[cnt].x, gt_var.Palpebral_fissure_RU[cnt].y,
-			gt_var.Palpebral_fissure_RL[cnt].x, gt_var.Palpebral_fissure_RL[cnt].y,
-			gt_var.Palpebral_fissure_LU[cnt].x, gt_var.Palpebral_fissure_LU[cnt].y,
-			gt_var.Palpebral_fissure_LL[cnt].x, gt_var.Palpebral_fissure_LL[cnt].y,
-			gt_var.Depressor_L[cnt].x, gt_var.Depressor_L[cnt].y,
-			gt_var.Depressor_R[cnt].x, gt_var.Depressor_R[cnt].y,
-			gt_var.Depressor_M[cnt].x, gt_var.Depressor_M[cnt].y,
-			gt_var.Nasal_ala_L[cnt].x, gt_var.Nasal_ala_L[cnt].y,
-			gt_var.Nasal_ala_R[cnt].x, gt_var.Nasal_ala_R[cnt].y,
-			gt_var.Medial_brow_L[cnt].x, gt_var.Medial_brow_L[cnt].y,
-			gt_var.Medial_brow_R[cnt].x, gt_var.Medial_brow_R[cnt].y,
-			gt_var.Malar_eminence_L[cnt].x, gt_var.Malar_eminence_L[cnt].y,
-			gt_var.Malar_eminence_R[cnt].x, gt_var.Malar_eminence_R[cnt].y);*/
-		cnt++;
-	}
-	fclose(fp);
+	m = Eigen::MatrixXf(pnum*2, col);
 
-	return gt_var;
+	for (int j = 0; j < col; j++) {
+		for (int i = 0; i < pnum * 2; i++) {
+			fscanf(fp, "%f", &m(i, j));
+		}	
+	}
+	
+	fclose(fp);
 }
 
 GLuint LoadToVBO(float* model, int model_numVerts) {
@@ -604,6 +561,20 @@ GLuint LoadToVAO(GLuint shaderprogram) {
 	GLint texAttrib = glGetAttribLocation(shaderprogram, "inTexcoord");
 	glEnableVertexAttribArray(texAttrib);
 	glVertexAttribPointer(texAttrib, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
+
+	glBindVertexArray(0); //Unbind the VAO
+
+	return vao;
+}
+
+GLuint LoadToVAO_Point(GLuint shaderprogram) {
+	GLuint vao;
+	glGenVertexArrays(1, &vao);
+	glBindVertexArray(vao);
+
+	GLint posAttrib = glGetAttribLocation(shaderprogram, "position");
+	glVertexAttribPointer(posAttrib, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), 0);
+	glEnableVertexAttribArray(posAttrib);
 
 	glBindVertexArray(0); //Unbind the VAO
 

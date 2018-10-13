@@ -1,4 +1,5 @@
 #include "stdafx.h"
+#include "blendcalc.h"
 
 int screen_width = 1000;
 int screen_height = 600;
@@ -37,8 +38,13 @@ int main(int argc, char *argv[]) {
 	int model_numVerts = 0;
 
 	//edge stores the bound of each facial feature
-	int edgeidx[] = { 133,1450,9807,9928,14813,656,12,5853,7669,6675,22524,5643 };
+	//int edgeidx[] = { 3542, 1450 }; // the basic points for canonical space
+									// 1450 is used as origin	
+	int edgeidx[] = { 797, 133, 3542, 1450, 9807, 9928, 18028, 18150, 14813, 6565,\
+						12, 14116, 5853, 15909, 7669, 14928, 6675, 22524, 5643 };
+	
 	int edge_numVerts = sizeof(edgeidx) / sizeof(int);
+
 	glm::vec3** edge = (glm::vec3**)malloc(sizeof(glm::vec3*) * (face_num + 1));
 	for (int i = 0; i < face_num + 1; i++) {
 		edge[i] = (glm::vec3*)malloc(sizeof(glm::vec3) * edge_numVerts);
@@ -53,12 +59,21 @@ int main(int argc, char *argv[]) {
 	faces[5] = ParseObj(MESH_DIR "/wide_mouth_open.obj", model_numVerts, edgeidx, edge, 5, edge_numVerts);
 	faces[6] = ParseObj(MESH_DIR "/frown.obj", model_numVerts, edgeidx, edge, 6, edge_numVerts);
 
+	//for (int i = 0; i <= face_num; i++) {
+	//	for (int j = 0; j < edge_numVerts; j++) {
+	//		printf("%f ", edge[i][j].x);
+	//		printf("%f ", edge[i][j].y);
+	//		//printf("\n");
+	//	}
+	//	printf("\n");
+	//}
+
 	//Load eye model
 	GLuint tex1 = AllocateTexture(TEX_DIR "/eye_BaseColor.bmp", 1);	
 	int eye_numVerts = 0;
 	int irisidx[] = { 257, 286 }; //257 is iris(L), 286 is iris(M)
 	int iris_numVerts = sizeof(irisidx) / sizeof(int);
-	glm::vec3* iris = (glm::vec3*)malloc(sizeof(glm::vec3) * edge_numVerts);
+	glm::vec3* iris = (glm::vec3*)malloc(sizeof(glm::vec3) * iris_numVerts);
 	float* eyes = ParseObj(MESH_DIR "/eyes.obj", eye_numVerts, irisidx, iris, iris_numVerts);
 
 	//Load mouth model
@@ -119,15 +134,86 @@ int main(int argc, char *argv[]) {
 		face[i] = base_head[i];
 	}
 
-	glm::vec3* edge_point = (glm::vec3 *)malloc(sizeof(glm::vec3)*edge_numVerts);
+	glm::mat4 proj_camera = glm::perspective(3.14f / 3, tan(35 * 3.14f / 180)*sqrtf(3.0f), 50.0f, 450.0f); //FOV, aspect, near, far
+	proj_camera[1][1] = -1;
+	float face_length = 6.520 + 8.882; // the length of the face in original model space
+	float real_face_length = 24; // in centimeter
+	float face_ratio = real_face_length / face_length;
+	glm::vec2 *bh_fpoint = (glm::vec2 *)malloc(sizeof(glm::vec2)*edge_numVerts);
+	//convert the base_head to perspective plane
 	for (int i = 0; i < edge_numVerts; i++) {
-		edge_point[i] = edge[face_num][i];
-		//printf("edge_point[%d]=(%f,%f,%f)\n", i, edge_point[i].x, edge_point[i].y, edge_point[i].z);
+		glm::vec4 temp = proj_camera * glm::vec4(edge[face_num][i] * face_ratio, 1.0);
+		bh_fpoint[i] = glm::vec2(temp.x, temp.y);
+	}
+
+	//transfer to canonical space
+	trans = bh_fpoint[3];
+	scale = glm::distance(bh_fpoint[2], bh_fpoint[3]);
+	for (int i = 0; i < edge_numVerts; i++) {
+		bh_fpoint[i] -= trans;
+		bh_fpoint[i] = bh_fpoint[i] / scale * unit;
+	}
+
+	//SET UP THE LS SYSTEM
+	blendcalc blendsys;
+	//Transfer the feature points into a perspective plane
+	blendsys.blend_a = Eigen::MatrixXf(edge_numVerts * 2, face_num);
+	for (int j = 0; j < face_num; j++) {
+		for (int i = 0, k = 0; i < edge_numVerts * 2; i += 2, k++) {		
+			glm::vec4 temp = proj_camera * glm::vec4(edge[j][k] * face_ratio, 1.0);
+			blendsys.blend_a(i, j) = temp.x;
+			blendsys.blend_a(i + 1, j) = temp.y;
+		}
 	}
 	
-	// 8 values per edge (x, y, z, w) 
-	// ? whats w/ the third value
-	float* point = (float *)calloc(8 * edge_numVerts * 2, sizeof(float));
+	//Transfer to the canonical space
+	for (int j = 0; j < face_num; j++) {
+		trans = glm::vec2(blendsys.blend_a(6, j), blendsys.blend_a(7, j));
+		scale = glm::distance(trans, glm::vec2(blendsys.blend_a(4, j), blendsys.blend_a(5, j)));
+		//scale = fabsf(trans.x - blendsys.blend_a(4, j));
+		for (int i = 0; i < edge_numVerts * 2; i += 2) {
+			//translate
+			blendsys.blend_a(i, j) -= trans.x;
+			blendsys.blend_a(i + 1, j) -= trans.y;
+
+			//scale
+			blendsys.blend_a(i, j) = blendsys.blend_a(i, j) / scale * unit;
+			blendsys.blend_a(i + 1, j) = blendsys.blend_a(i + 1, j) / scale * unit;
+		}
+	}
+
+	//get the delta between each blend shape and base_head
+	for (int j = 0; j < face_num; j++) {
+		for (int i = 0, k = 0; i < edge_numVerts * 2; i += 2, k++) {
+			blendsys.blend_a(i, j) -= bh_fpoint[i].x;
+			blendsys.blend_a(i + 1, j) -= bh_fpoint[i].y;
+		}
+	}
+	printf("A:\n");
+	std::cout << blendsys.blend_a << std::endl;
+
+	//read the sample data
+	//point: x, y, z
+	float* point = (float *)calloc(edge_numVerts * 3, sizeof(float));
+	Eigen::MatrixXf feature_csv;
+	//read the feature points from .csv files
+	GetCSVFile(feature_csv, CAN_DIR "/28063_s_canon.csv", edge_numVerts);
+	//get vector b for linear least sqaure
+	blendsys.blend_b = feature_csv.col(1);
+	/*printf("before converting...\nb:\n");
+	std::cout << blendsys.blend_b << std::endl;*/
+
+	for (int i = 0; i < edge_numVerts; i++) {
+		blendsys.blend_b(2 * i) -= bh_fpoint[i].x;
+		blendsys.blend_b(2 * i + 1) -= bh_fpoint[i].y;
+	}
+
+	printf("b:\n");
+	std::cout << blendsys.blend_b << std::endl;
+
+	Eigen::MatrixXf ata = blendsys.blend_a.transpose()*blendsys.blend_a;
+	std::cout << "determinant of ata: " << ata.determinant() << std::endl;
+	SolveLeastSquare(blendsys);
 
 	bool show_window = false;
 
@@ -169,6 +255,11 @@ int main(int argc, char *argv[]) {
 		glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 		
+		for (int i = 0; i < 7; i++) {
+			alpha[i] = blendsys.blend_x(i);
+			//alpha[i] = 0;
+		}
+
 		for (int i = 0; i < model_numVerts * 8; i++) {
 			face[i] = base_head[i];
 			for (int j = 0; j < face_num; j++) {
@@ -177,29 +268,15 @@ int main(int argc, char *argv[]) {
 		}
 
 		// face_num = 7
-		// loops edge[face_num] -> glm::vec3 feature points of face to be rendered to screen
-		// point[k + ...] -> points of feature points arranged as float array (x, y, z)
-		// ? why is point[k + 5] set to 1 
-		// Uses -x value of point to reflect features to the opposit side of faces
-		for (int i = 0, k = 0; i < edge_numVerts; i++, k += 8) {
+		for (int i = 0, k = 0; i < edge_numVerts; i++, k += 3) {
 			point[k] = edge[face_num][i].x;
 			point[k + 1] = edge[face_num][i].y;
 			point[k + 2] = edge[face_num][i].z;
-			point[k + 5] = 1;
-
-			point[k + edge_numVerts*8] = -edge[face_num][i].x;
-			point[k + edge_numVerts*8 + 1] = edge[face_num][i].y;
-			point[k + edge_numVerts*8 + 2] = edge[face_num][i].z;
-			point[k + edge_numVerts*8 + 5] = 1;
 
 			for (int j = 0; j < face_num; j++) {
 				point[k] += alpha[j] * (edge[j][i].x - edge[face_num][i].x);
 				point[k + 1] += alpha[j] * (edge[j][i].y - edge[face_num][i].y);
 				point[k + 2] += alpha[j] * (edge[j][i].z - edge[face_num][i].z);
-
-				point[k + edge_numVerts*8] += alpha[j] * (-edge[j][i].x + edge[face_num][i].x);
-				point[k + edge_numVerts*8 + 1] += alpha[j] * (edge[j][i].y - edge[face_num][i].y);
-				point[k + edge_numVerts*8 + 2] += alpha[j] * (edge[j][i].z - edge[face_num][i].z);
 			}
 			//printf("point[%d]=(%f,%f,%f)\n", i, point[k], point[k + 1], point[k + 2]);
 		}
@@ -228,11 +305,11 @@ int main(int argc, char *argv[]) {
 
 		//Load the points to buffer
 		glBindBuffer(GL_ARRAY_BUFFER, vbo_point);
-		glBufferData(GL_ARRAY_BUFFER, sizeof(float)*edge_numVerts * 8 * 2, point, GL_STATIC_DRAW);
+		glBufferData(GL_ARRAY_BUFFER, sizeof(float)*edge_numVerts * 3, point, GL_STATIC_DRAW);
 
 		//draw the edge points
 		glUseProgram(PointShaderProgram);
-		GLuint vao_point = LoadToVAO(PointShaderProgram);
+		GLuint vao_point = LoadToVAO_Point(PointShaderProgram);
 		glBindVertexArray(vao_point);
 
 		inColor = glm::vec3(0.0, 1.0, 0.0);
@@ -243,7 +320,7 @@ int main(int argc, char *argv[]) {
 		glm::mat4 pointmat(1.0f);
 		glUniformMatrix4fv(uniModel, 1, GL_FALSE, glm::value_ptr(pointmat));
 
-		glDrawArrays(GL_POINTS, 0, edge_numVerts*2);
+		glDrawArrays(GL_POINTS, 0, edge_numVerts);
 		glBindVertexArray(0);
 
 		//Load the eyes to buffer

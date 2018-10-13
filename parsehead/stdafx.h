@@ -25,43 +25,26 @@
 #include <tchar.h>
 #endif // PLATFORM_FLAG == PF_LINUX
 
+#include "Eigen/Core"
+#include "Eigen/Dense"
 #include "glm/glm.hpp"
 #include "glm/gtc/matrix_transform.hpp"
 #include "glm/gtc/type_ptr.hpp"
 #include "glm/gtx/rotate_vector.hpp"
 
-struct GT_Variable {
-	int size;
-	float* time;
-	glm::vec2* Lateral_canthus_L;
-	glm::vec2* Lateral_canthus_R;
+#include <iostream>
 
-	glm::vec2* Palpebral_fissure_RU;
-	glm::vec2* Palpebral_fissure_RL;
-	glm::vec2* Palpebral_fissure_LU;
-	glm::vec2* Palpebral_fissure_LL;
+extern float unit;
+extern glm::vec2 trans;
+extern float scale;
 
-	glm::vec2* Depressor_L;
-	glm::vec2* Depressor_R;
-	glm::vec2* Depressor_M;
-
-	glm::vec2* Nasal_ala_L;
-	glm::vec2* Nasal_ala_R;
-
-	glm::vec2* Medial_brow_L;
-	glm::vec2* Medial_brow_R;
-
-	glm::vec2* Malar_eminence_L;
-	glm::vec2* Malar_eminence_R;
-};
-
-void GTAllocate(GT_Variable &gt_var, int size);
+void GetCSVFile(Eigen::MatrixXf &matrix, const char* filename, int pnum);
 float* ParseObj(const char* filename, int &model_numVerts, const int edgeidx[], glm::vec3** edge, const int face_id, const int edge_numVerts);
 float* ParseObj(const char* filename, int &model_numVerts, const int edgeidx[], glm::vec3* edge, const int edge_numVerts);
 float* ParseObj(const char* filename, int &model_numVerts);
-GT_Variable ParseCSVwithSpace(const char* filename);
 GLuint LoadToVBO(float* model, int model_numVerts);
 GLuint LoadToVAO(GLuint shaderprogram);
+GLuint LoadToVAO_Point(GLuint shaderprogram);
 static char* readShaderSource(const char* shaderFile);
 GLuint InitShader(const char* vShaderFileName, const char* fShaderFileName);
 GLuint AllocateTexture(const char* tex_filename, int i);
