@@ -102,6 +102,7 @@ endif( UNIX )
 set( HEADERS 
 	"${PROJECT_SOURCE_DIR}/parsehead/stdafx.h"
 	"${PROJECT_SOURCE_DIR}/parsehead/blendcalc.h"
+	"${PROJECT_SOURCE_DIR}/parsehead/gpqp_solv.hpp"
 )
 
 set( SOURCES
@@ -112,6 +113,7 @@ set( SOURCES
 	"${PROJECT_SOURCE_DIR}/parsehead/stdafx.cpp"
 	"${PROJECT_SOURCE_DIR}/parsehead/blendcalc.cpp"
 	"${PROJECT_SOURCE_DIR}/parsehead/main.cpp"
+	"${PROJECT_SOURCE_DIR}/parsehead/test_gpqp_solv.cpp"
 )
 
 ###########################################################################

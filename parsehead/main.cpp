@@ -1,5 +1,6 @@
 #include "stdafx.h"
 #include "blendcalc.h"
+#include "gpqp_solv.hpp"
 
 int screen_width = 1000;
 int screen_height = 600;
@@ -134,44 +135,54 @@ int main(int argc, char *argv[]) {
 		face[i] = base_head[i];
 	}
 
-	glm::mat4 proj_camera = glm::perspective(3.14f / 3, tan(35 * 3.14f / 180)*sqrtf(3.0f), 50.0f, 450.0f); //FOV, aspect, near, far
-	proj_camera[1][1] = -1;
+	glm::mat4 Xbox_camera = glm::perspective(3.14f / 3, tan(35 * 3.14f / 180)*sqrtf(3.0f), 50.0f, 450.0f); //FOV, aspect, near, far
+	Xbox_camera[1][1] = -1;
 	float face_length = 6.520 + 8.882; // the length of the face in original model space
 	float real_face_length = 24; // in centimeter
 	float face_ratio = real_face_length / face_length;
 	glm::vec2 *bh_fpoint = (glm::vec2 *)malloc(sizeof(glm::vec2)*edge_numVerts);
 	//convert the base_head to perspective plane
+	//printf("base head----------------------------------------------\n");
+	//printf("perspective plane: \n");
 	for (int i = 0; i < edge_numVerts; i++) {
-		glm::vec4 temp = proj_camera * glm::vec4(edge[face_num][i] * face_ratio, 1.0);
+		glm::vec4 temp = Xbox_camera * glm::vec4(edge[face_num][i] * face_ratio, 1.0);
 		bh_fpoint[i] = glm::vec2(temp.x, temp.y);
+		//printf("bhp[%d]: %f, %f\n", i, bh_fpoint[i].x, bh_fpoint[i].y);
 	}
 
 	//transfer to canonical space
+	//printf("canonical space: \n");
 	trans = bh_fpoint[3];
 	scale = glm::distance(bh_fpoint[2], bh_fpoint[3]);
 	for (int i = 0; i < edge_numVerts; i++) {
 		bh_fpoint[i] -= trans;
 		bh_fpoint[i] = bh_fpoint[i] / scale * unit;
+		//printf("bhp[%d]: %f, %f\n", i, bh_fpoint[i].x, bh_fpoint[i].y);
 	}
 
 	//SET UP THE LS SYSTEM
+	//printf("A------------------------------------------------------\n");
+	//printf("perspective plane:\n");
 	blendcalc blendsys;
 	//Transfer the feature points into a perspective plane
 	blendsys.blend_a = Eigen::MatrixXf(edge_numVerts * 2, face_num);
 	for (int j = 0; j < face_num; j++) {
 		for (int i = 0, k = 0; i < edge_numVerts * 2; i += 2, k++) {		
-			glm::vec4 temp = proj_camera * glm::vec4(edge[j][k] * face_ratio, 1.0);
+			glm::vec4 temp = Xbox_camera * glm::vec4(edge[j][k] * face_ratio, 1.0);
 			blendsys.blend_a(i, j) = temp.x;
 			blendsys.blend_a(i + 1, j) = temp.y;
 		}
 	}
+	//std::cout << blendsys.blend_a << "\nsize" << blendsys.blend_a.size() << std::endl;
 	
 	//Transfer to the canonical space
+	printf("canonical space:\n");
 	for (int j = 0; j < face_num; j++) {
 		trans = glm::vec2(blendsys.blend_a(6, j), blendsys.blend_a(7, j));
 		scale = glm::distance(trans, glm::vec2(blendsys.blend_a(4, j), blendsys.blend_a(5, j)));
 		//scale = fabsf(trans.x - blendsys.blend_a(4, j));
-		for (int i = 0; i < edge_numVerts * 2; i += 2) {
+		printf("face[%d]:\t\tblendshape[%d]:\n", j);
+		for (int i = 0, k = 0; i < edge_numVerts * 2; i += 2, k++) {
 			//translate
 			blendsys.blend_a(i, j) -= trans.x;
 			blendsys.blend_a(i + 1, j) -= trans.y;
@@ -179,41 +190,56 @@ int main(int argc, char *argv[]) {
 			//scale
 			blendsys.blend_a(i, j) = blendsys.blend_a(i, j) / scale * unit;
 			blendsys.blend_a(i + 1, j) = blendsys.blend_a(i + 1, j) / scale * unit;
-		}
-	}
+			printf("%d: %f, %f\t", i, blendsys.blend_a(i, j), blendsys.blend_a(i + 1, j));
 
-	//get the delta between each blend shape and base_head
-	for (int j = 0; j < face_num; j++) {
-		for (int i = 0, k = 0; i < edge_numVerts * 2; i += 2, k++) {
-			blendsys.blend_a(i, j) -= bh_fpoint[i].x;
-			blendsys.blend_a(i + 1, j) -= bh_fpoint[i].y;
+			//blendshape
+			blendsys.blend_a(i, j) -= bh_fpoint[k].x;
+			blendsys.blend_a(i + 1, j) -= bh_fpoint[k].y;
+			printf("%f, %f\n", blendsys.blend_a(i, j), blendsys.blend_a(i + 1, j));
 		}
 	}
-	printf("A:\n");
-	std::cout << blendsys.blend_a << std::endl;
 
 	//read the sample data
 	//point: x, y, z
 	float* point = (float *)calloc(edge_numVerts * 3, sizeof(float));
 	Eigen::MatrixXf feature_csv;
 	//read the feature points from .csv files
-	GetCSVFile(feature_csv, CAN_DIR "/28063_s_canon.csv", edge_numVerts);
+	GetCSVFile(feature_csv, CAN_DIR "/28218_s_canon.csv", edge_numVerts);
+	//std::cout << "feature_csv: " << feature_csv << "size" << feature_csv.size() << std::endl;
 	//get vector b for linear least sqaure
-	blendsys.blend_b = feature_csv.col(1);
-	/*printf("before converting...\nb:\n");
-	std::cout << blendsys.blend_b << std::endl;*/
+	blendsys.blend_b = feature_csv.col(feature_csv.cols()-1);
+	//printf("before converting...\nb:\n");
+	//std::cout << blendsys.blend_b << std::endl;
 
 	for (int i = 0; i < edge_numVerts; i++) {
 		blendsys.blend_b(2 * i) -= bh_fpoint[i].x;
 		blendsys.blend_b(2 * i + 1) -= bh_fpoint[i].y;
 	}
 
-	printf("b:\n");
-	std::cout << blendsys.blend_b << std::endl;
+	//printf("b:\n");
+	//std::cout << blendsys.blend_b << std::endl;
 
 	Eigen::MatrixXf ata = blendsys.blend_a.transpose()*blendsys.blend_a;
 	std::cout << "determinant of ata: " << ata.determinant() << std::endl;
-	SolveLeastSquare(blendsys);
+
+	Eigen::VectorXf x_0 = Eigen::VectorXf::Ones(face_num) * 0.5f;
+	//std::cout << "x_0: " << x_0 << "size" << x_0.size() << "\n";
+	Eigen::VectorXf x_lb = Eigen::VectorXf::Zero(face_num);
+	//std::cout << "x_lb: " << x_lb << "\n";
+	Eigen::VectorXf x_ub = Eigen::VectorXf::Ones(face_num);
+	//std::cout << "x_ub: " << x_ub << "\n";
+
+	free(bh_fpoint);
+
+	auto t1 = std::chrono::high_resolution_clock::now();
+	blendsys.blend_x = GPQPSolver::Solve(blendsys.blend_a, blendsys.blend_b, x_lb, x_ub, x_0, 10000);
+	auto t2 = std::chrono::high_resolution_clock::now();
+	auto dur = std::chrono::duration_cast<std::chrono::nanoseconds>(t2 - t1).count();
+	float dur_ms = static_cast<float>(dur) / 1e6;
+	std::cout << blendsys.blend_x.transpose() << std::endl;
+	std::cout << "Took " << dur_ms << " ms" << std::endl;
+
+	//SolveLeastSquare(blendsys);
 
 	bool show_window = false;
 
@@ -255,7 +281,7 @@ int main(int argc, char *argv[]) {
 		glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 		
-		for (int i = 0; i < 7; i++) {
+		for (int i = 0; i < face_num; i++) {
 			alpha[i] = blendsys.blend_x(i);
 			//alpha[i] = 0;
 		}

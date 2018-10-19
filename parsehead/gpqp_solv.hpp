@@ -1,4 +1,6 @@
-#include <eigen3/Eigen/Core>
+#pragma once
+
+#include "Eigen/Core"
 #include <limits>
 #include <algorithm>
 #include <iostream>
@@ -6,7 +8,7 @@
 
 class GPQPSolver {
 private:
-  static std::vector<int> GetCauchyPoint(const Eigen::MatrixXd& A, const Eigen::VectorXd& b, const Eigen::VectorXd& x_k, const Eigen::VectorXd& g, const Eigen::VectorXd& x_lb, const Eigen::VectorXd& x_ub, Eigen::VectorXd& x_c) {
+  static std::vector<int> GetCauchyPoint(const Eigen::MatrixXf& A, const Eigen::VectorXf& b, const Eigen::VectorXf& x_k, const Eigen::VectorXf& g, const Eigen::VectorXf& x_lb, const Eigen::VectorXf& x_ub, Eigen::VectorXf& x_c) {
   std::vector<std::pair<double,int>> break_times;
   for (int i = 0; i < x_k.size(); ++i) {
     if (g[i] < 0.0) {
@@ -23,7 +25,7 @@ private:
   }*/
 
   x_c = x_k;
-  Eigen::VectorXd g_curr = g;
+  Eigen::VectorXf g_curr = g;
   double t_curr = 0.0;
   std::vector<int> locked_dims;
   for (int i = 0; i < break_times.size(); ++i) {
@@ -53,14 +55,14 @@ private:
 public:
   // Problem of form:
   // min_x 0.5*||A*x + b||^2 s.th x_lb <= x <= x_ub
-  static Eigen::VectorXd Solve(const Eigen::MatrixXd& A, const Eigen::VectorXd& b, const Eigen::VectorXd& x_lb, const Eigen::VectorXd& x_ub, const Eigen::VectorXd& x_0, int n_iters) {
-    Eigen::VectorXd x_k = x_0;
+  static Eigen::VectorXf Solve(const Eigen::MatrixXf& A, const Eigen::VectorXf& b, const Eigen::VectorXf& x_lb, const Eigen::VectorXf& x_ub, const Eigen::VectorXf& x_0, int n_iters) {
+    Eigen::VectorXf x_k = x_0;
     for (int iter = 0; iter < n_iters; ++iter) {// (true) {
       // Compute Gradient:
-      Eigen::VectorXd g = A.transpose() * A * x_k + A.transpose() * b;
+      Eigen::VectorXf g = A.transpose() * A * x_k + A.transpose() * b;
       
       // Get Cauchy Point:
-      Eigen::VectorXd x_c;
+      Eigen::VectorXf x_c;
       std::vector<int> locked_dims = GetCauchyPoint(A, b, x_k, g, x_lb, x_ub, x_c);
 
       // (Approx.) Solve constrained Problem:
@@ -69,9 +71,9 @@ public:
 /*      int ld_k = 0;
       int b_idx = 0;
       int e_idx = x_k.size() - 1;
-      Eigen::MatrixXd P = Eigen::MatrixXd::Zero(x_k.size(),x_k.size());
+      Eigen::MatrixXf P = Eigen::MatrixXf::Zero(x_k.size(),x_k.size());
       int n_unlocked = 0;
-      Eigen::VectorXd x_locked = x_c;
+      Eigen::VectorXf x_locked = x_c;
       for (int i = 0; i < x_k.size(); ++i) {
         if (ld_k < locked_dims.size() && i == locked_dims[ld_k]) {
           // Locked dim
@@ -92,14 +94,14 @@ public:
       }
       int n_locked = x_k.size() - n_unlocked;
       x_locked = x_locked.head(n_locked);
-      Eigen::MatrixXd Q_comb = P.transpose() * A.transpose() * A * P;
-      Eigen::VectorXd b_comb = b.transpose() * A * P;
+      Eigen::MatrixXf Q_comb = P.transpose() * A.transpose() * A * P;
+      Eigen::VectorXf b_comb = b.transpose() * A * P;
 
-      Eigen::MatrixXd Q_new = Q_comb.topLeftCorner(n_unlocked, n_unlocked);
-      Eigen::MatrixXd b_new = x_locked.transpose() * Q_comb.topRightCorner(n_locked, n_unlocked);
+      Eigen::MatrixXf Q_new = Q_comb.topLeftCorner(n_unlocked, n_unlocked);
+      Eigen::MatrixXf b_new = x_locked.transpose() * Q_comb.topRightCorner(n_locked, n_unlocked);
       b_new += b_comb.topRows(n_unlocked).transpose();
 
-      //Eigen::VectorXd x_new_pivoted = Q_comb.*/
+      //Eigen::VectorXf x_new_pivoted = Q_comb.*/
     }
     return x_k;
   };

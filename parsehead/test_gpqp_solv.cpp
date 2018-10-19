@@ -1,5 +1,5 @@
 #include "gpqp_solv.hpp"
-#include <eigen3/Eigen/Core>
+#include "Eigen/Core"
 #include <iostream>
 #include <chrono>
 
