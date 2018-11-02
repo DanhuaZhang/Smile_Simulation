@@ -526,10 +526,10 @@ void GetCSVFile(Eigen::MatrixXf &m, const char* filename, int pnum) {
 	}
 	rewind(fp);
 
-	m = Eigen::MatrixXf(pnum*2, col);
+	m = Eigen::MatrixXf(pnum*2 + 1, col);
 
 	for (int j = 0; j < col; j++) {
-		for (int i = 0; i < pnum * 2; i++) {
+		for (int i = 0; i < pnum * 2 + 1; i++) {
 			fscanf(fp, "%f", &m(i, j));
 		}	
 	}
@@ -740,4 +740,41 @@ GLuint InitShader(const char* vShaderFileName, const char* fShaderFileName) {
 	glLinkProgram(program);
 
 	return program;
+}
+
+// interpolate between columns and return a matrix of column number num_loop
+Eigen::MatrixXf Interpolation(Eigen::MatrixXf m, Eigen::MatrixXf& rm, float time_interval) {
+	// the first row of matrix m is timestamp
+	int num_loop = (int)((m(0, m.cols() - 1) - m(0, 0)) / time_interval);
+	rm = Eigen::MatrixXf(m.rows() - 1, num_loop);
+
+	// for each column
+	int left = 0;
+	float cur_time = m(0,left);
+	int right = 1;
+	for (int j = 0; j < num_loop; j++) {
+		
+		if (j == 0) { // store the first column and start from it
+			for (int i = 0; i < rm.rows(); i++) {
+				rm(i, j) = m(i + 1, j);
+			}
+		}
+		
+		// get the nearest left and right point
+		while (m(0, left) <= cur_time) {
+			left++;
+		}
+		right = left;
+		left--;
+
+		if (right < rm.cols()) {
+			for (int i = 0; i < rm.rows(); i++) {
+				rm(i, j) = (m(i + 1, right) - m(i + 1, left)) * (cur_time - m(0, left)) / (m(0, right) - m(0, left)) + m(i + 1, left);
+			}
+		}
+
+		cur_time += time_interval;
+	}
+
+	return rm;
 }

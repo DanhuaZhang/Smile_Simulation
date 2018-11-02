@@ -33,6 +33,7 @@
 #include "glm/gtx/rotate_vector.hpp"
 
 #include <iostream>
+#include <fstream>
 #include <chrono>
 
 extern float unit;
@@ -49,3 +50,5 @@ GLuint LoadToVAO_Point(GLuint shaderprogram);
 static char* readShaderSource(const char* shaderFile);
 GLuint InitShader(const char* vShaderFileName, const char* fShaderFileName);
 GLuint AllocateTexture(const char* tex_filename, int i);
+// interpolate between columns and return a matrix of column number num_loop
+Eigen::MatrixXf Interpolation(Eigen::MatrixXf m, Eigen::MatrixXf& rm, float time_interval);

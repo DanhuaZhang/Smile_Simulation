@@ -5,6 +5,7 @@
 int screen_width = 1000;
 int screen_height = 600;
 bool fullscreen = false;
+int iter_num = 100;
 
 int main(int argc, char *argv[]) {	
 
@@ -38,9 +39,8 @@ int main(int argc, char *argv[]) {
 	int face_num = 7;
 	int model_numVerts = 0;
 
-	//edge stores the bound of each facial feature
-	//int edgeidx[] = { 3542, 1450 }; // the basic points for canonical space
-									// 1450 is used as origin	
+	// edge stores the bound of each facial feature
+	// the basic points for canonical space, 1450 is used as origin and combine 3542 to make a line
 	int edgeidx[] = { 797, 133, 3542, 1450, 9807, 9928, 18028, 18150, 14813, 6565,\
 						12, 14116, 5853, 15909, 7669, 14928, 6675, 22524, 5643 };
 	
@@ -59,15 +59,6 @@ int main(int argc, char *argv[]) {
 	faces[4] = ParseObj(MESH_DIR "/surprised.obj", model_numVerts, edgeidx, edge, 4, edge_numVerts);
 	faces[5] = ParseObj(MESH_DIR "/wide_mouth_open.obj", model_numVerts, edgeidx, edge, 5, edge_numVerts);
 	faces[6] = ParseObj(MESH_DIR "/frown.obj", model_numVerts, edgeidx, edge, 6, edge_numVerts);
-
-	//for (int i = 0; i <= face_num; i++) {
-	//	for (int j = 0; j < edge_numVerts; j++) {
-	//		printf("%f ", edge[i][j].x);
-	//		printf("%f ", edge[i][j].y);
-	//		//printf("\n");
-	//	}
-	//	printf("\n");
-	//}
 
 	//Load eye model
 	GLuint tex1 = AllocateTexture(TEX_DIR "/eye_BaseColor.bmp", 1);	
@@ -128,7 +119,6 @@ int main(int argc, char *argv[]) {
 
 	//parameters for face interpolation
 	float* alpha = (float *)calloc(face_num, sizeof(float));
-	float* perfect = (float *)calloc(face_num, sizeof(float));
 
 	float* face = (float *)malloc(sizeof(float)*model_numVerts * 8);
 	for (int i = 0; i < model_numVerts * 8; i++) {
@@ -141,28 +131,22 @@ int main(int argc, char *argv[]) {
 	float real_face_length = 24; // in centimeter
 	float face_ratio = real_face_length / face_length;
 	glm::vec2 *bh_fpoint = (glm::vec2 *)malloc(sizeof(glm::vec2)*edge_numVerts);
+
 	//convert the base_head to perspective plane
-	//printf("base head----------------------------------------------\n");
-	//printf("perspective plane: \n");
 	for (int i = 0; i < edge_numVerts; i++) {
 		glm::vec4 temp = Xbox_camera * glm::vec4(edge[face_num][i] * face_ratio, 1.0);
 		bh_fpoint[i] = glm::vec2(temp.x, temp.y);
-		//printf("bhp[%d]: %f, %f\n", i, bh_fpoint[i].x, bh_fpoint[i].y);
 	}
 
 	//transfer to canonical space
-	//printf("canonical space: \n");
 	trans = bh_fpoint[3];
 	scale = glm::distance(bh_fpoint[2], bh_fpoint[3]);
 	for (int i = 0; i < edge_numVerts; i++) {
 		bh_fpoint[i] -= trans;
 		bh_fpoint[i] = bh_fpoint[i] / scale * unit;
-		//printf("bhp[%d]: %f, %f\n", i, bh_fpoint[i].x, bh_fpoint[i].y);
 	}
 
 	//SET UP THE LS SYSTEM
-	//printf("A------------------------------------------------------\n");
-	//printf("perspective plane:\n");
 	blendcalc blendsys;
 	//Transfer the feature points into a perspective plane
 	blendsys.blend_a = Eigen::MatrixXf(edge_numVerts * 2, face_num);
@@ -173,15 +157,11 @@ int main(int argc, char *argv[]) {
 			blendsys.blend_a(i + 1, j) = temp.y;
 		}
 	}
-	//std::cout << blendsys.blend_a << "\nsize" << blendsys.blend_a.size() << std::endl;
 	
 	//Transfer to the canonical space
-	printf("canonical space:\n");
 	for (int j = 0; j < face_num; j++) {
 		trans = glm::vec2(blendsys.blend_a(6, j), blendsys.blend_a(7, j));
 		scale = glm::distance(trans, glm::vec2(blendsys.blend_a(4, j), blendsys.blend_a(5, j)));
-		//scale = fabsf(trans.x - blendsys.blend_a(4, j));
-		printf("face[%d]:\t\tblendshape[%d]:\n", j);
 		for (int i = 0, k = 0; i < edge_numVerts * 2; i += 2, k++) {
 			//translate
 			blendsys.blend_a(i, j) -= trans.x;
@@ -190,12 +170,10 @@ int main(int argc, char *argv[]) {
 			//scale
 			blendsys.blend_a(i, j) = blendsys.blend_a(i, j) / scale * unit;
 			blendsys.blend_a(i + 1, j) = blendsys.blend_a(i + 1, j) / scale * unit;
-			printf("%d: %f, %f\t", i, blendsys.blend_a(i, j), blendsys.blend_a(i + 1, j));
 
 			//blendshape
 			blendsys.blend_a(i, j) -= bh_fpoint[k].x;
 			blendsys.blend_a(i + 1, j) -= bh_fpoint[k].y;
-			printf("%f, %f\n", blendsys.blend_a(i, j), blendsys.blend_a(i + 1, j));
 		}
 	}
 
@@ -204,46 +182,66 @@ int main(int argc, char *argv[]) {
 	float* point = (float *)calloc(edge_numVerts * 3, sizeof(float));
 	Eigen::MatrixXf feature_csv;
 	//read the feature points from .csv files
-	GetCSVFile(feature_csv, CAN_DIR "/28218_s_canon.csv", edge_numVerts);
-	//std::cout << "feature_csv: " << feature_csv << "size" << feature_csv.size() << std::endl;
-	//get vector b for linear least sqaure
-	blendsys.blend_b = feature_csv.col(feature_csv.cols()-1);
-	//printf("before converting...\nb:\n");
-	//std::cout << blendsys.blend_b << std::endl;
+	GetCSVFile(feature_csv, CAN_DIR "/28162_s_canon.csv", edge_numVerts);
+	
+	Eigen::MatrixXf X = Eigen::MatrixXf(face_num + 1, feature_csv.cols());
+	for (int j = 0; j < feature_csv.cols(); j++) {
+		blendsys.blend_b = feature_csv.block(1, j, feature_csv.rows() - 1, 1); // i,j,p,q: start(i,j), size: p-by-q
+																				// the first line is time
+		for (int i = 0; i < edge_numVerts; i++) {
+			blendsys.blend_b(2 * i) -= bh_fpoint[i].x;
+			blendsys.blend_b(2 * i + 1) -= bh_fpoint[i].y;
+		}
 
-	for (int i = 0; i < edge_numVerts; i++) {
-		blendsys.blend_b(2 * i) -= bh_fpoint[i].x;
-		blendsys.blend_b(2 * i + 1) -= bh_fpoint[i].y;
+		Eigen::VectorXf x_0 = Eigen::VectorXf::Ones(face_num) * 0.5f;
+		Eigen::VectorXf x_lb = Eigen::VectorXf::Zero(face_num);
+		Eigen::VectorXf x_ub = Eigen::VectorXf::Ones(face_num);
+
+		blendsys.blend_x = GPQPSolver::Solve(blendsys.blend_a, blendsys.blend_b, x_lb, x_ub, x_0, iter_num);
+		
+		// store time
+		X(0, j) = feature_csv(0, j);
+		// store calculated weights
+		for (int i = 0; i < face_num; i++) {
+			X(i + 1, j) = blendsys.blend_x(i);
+		}		
 	}
+	free(bh_fpoint);	
 
-	//printf("b:\n");
-	//std::cout << blendsys.blend_b << std::endl;
+	//FILE *fpx = fopen(SHADER_DIR "/X.txt", "w+");
+	//if (fpx == NULL) {
+	//	printf("error open X.txt\n");
+	//}
+	//for (int i = 0; i < X.rows(); i++) {
+	//	fprintf(fpx, "%d\t", i);
+	//	for (int j = 0; j < X.cols(); j++) {
+	//		fprintf(fpx, "%f ", X(i, j));
+	//	}
+	//	fprintf(fpx, "\n");
+	//}
+	//fclose(fpx);
 
-	Eigen::MatrixXf ata = blendsys.blend_a.transpose()*blendsys.blend_a;
-	std::cout << "determinant of ata: " << ata.determinant() << std::endl;
+	//interpolation between weights according to time
+	Eigen::MatrixXf weights;
+	float time_interval = 0.01f;
+	Interpolation(X, weights, time_interval);
+	
+	//FILE *fpw = fopen(SHADER_DIR "/Weights.txt", "w+");
+	//if (fpw == NULL) {
+	//	printf("error open Weights.txt\n");
+	//}
+	//for (int i = 0; i < weights.rows(); i++) {
+	//	fprintf(fpw, "%d\t", i);
+	//	for (int j = 0; j < weights.cols(); j++) {
+	//		fprintf(fpw, "%f ", weights(i, j));
+	//	}
+	//	fprintf(fpw, "\n");
+	//}
+	//fclose(fpw);
 
-	Eigen::VectorXf x_0 = Eigen::VectorXf::Ones(face_num) * 0.5f;
-	//std::cout << "x_0: " << x_0 << "size" << x_0.size() << "\n";
-	Eigen::VectorXf x_lb = Eigen::VectorXf::Zero(face_num);
-	//std::cout << "x_lb: " << x_lb << "\n";
-	Eigen::VectorXf x_ub = Eigen::VectorXf::Ones(face_num);
-	//std::cout << "x_ub: " << x_ub << "\n";
-
-	free(bh_fpoint);
-
-	auto t1 = std::chrono::high_resolution_clock::now();
-	blendsys.blend_x = GPQPSolver::Solve(blendsys.blend_a, blendsys.blend_b, x_lb, x_ub, x_0, 10000);
-	auto t2 = std::chrono::high_resolution_clock::now();
-	auto dur = std::chrono::duration_cast<std::chrono::nanoseconds>(t2 - t1).count();
-	float dur_ms = static_cast<float>(dur) / 1e6;
-	std::cout << blendsys.blend_x.transpose() << std::endl;
-	std::cout << "Took " << dur_ms << " ms" << std::endl;
-
-	//SolveLeastSquare(blendsys);
-
+	int idx_loop = 0; // frame counter
 	bool show_window = false;
 
-	bool start = false;
 	bool quit = false;
 	while (!quit) {
 		while (SDL_PollEvent(&windowEvent)) {
@@ -254,25 +252,9 @@ int main(int argc, char *argv[]) {
 				fullscreen = !fullscreen;
 			SDL_SetWindowFullscreen(window, fullscreen ? SDL_WINDOW_FULLSCREEN : 0); //Set to full screen
 
-			//start drawing
-			if (windowEvent.type == SDL_KEYUP && windowEvent.key.keysym.sym == SDLK_s) {
-				start = true;
-				for (int i = 0; i < face_num; i++) {
-					perfect[i] = alpha[i];
-					alpha[i] = 0;
-				}
-			}
-
 			//reset
 			if (windowEvent.type == SDL_KEYUP && windowEvent.key.keysym.sym == SDLK_r) {
-				printf("last perfect face:\n");
-				for (int i = 0; i < face_num; i++) {
-					printf("alpha%d: %f\n", i, alpha[i]);
-				}
-				for (int i = 0; i < face_num; i++) {
-					alpha[i] = 0;
-				}
-				start = false;
+				idx_loop = 0;
 			}
 
 			ImGui_ImplSdlGL3_ProcessEvent(&windowEvent);
@@ -281,9 +263,10 @@ int main(int argc, char *argv[]) {
 		glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 		
-		for (int i = 0; i < face_num; i++) {
-			alpha[i] = blendsys.blend_x(i);
-			//alpha[i] = 0;
+		if (idx_loop < weights.cols()) {
+			for (int i = 0; i < face_num; i++) {
+				alpha[i] = weights(i, idx_loop);
+			}
 		}
 
 		for (int i = 0; i < model_numVerts * 8; i++) {
@@ -304,7 +287,6 @@ int main(int argc, char *argv[]) {
 				point[k + 1] += alpha[j] * (edge[j][i].y - edge[face_num][i].y);
 				point[k + 2] += alpha[j] * (edge[j][i].z - edge[face_num][i].z);
 			}
-			//printf("point[%d]=(%f,%f,%f)\n", i, point[k], point[k + 1], point[k + 2]);
 		}
 
 		//Load the face model to buffer
@@ -394,42 +376,35 @@ int main(int argc, char *argv[]) {
 		glBindVertexArray(0);
 
 		static char frame[4] = { "20" };
-		if (!start) {
-			//draw the slidebar
-			ImGui_ImplSdlGL3_NewFrame(window);
-			ImGui::Begin("Face Parameters", &show_window);
+		
+		//draw the slidebar
+		ImGui_ImplSdlGL3_NewFrame(window);
+		ImGui::Begin("Face Parameters", &show_window);
 
-			ImGui::Text("The parameters to adjust the facial features.\n");
-			ImGui::Text("Press key 's' to start auto-face.\n");
-			ImGui::Text("Press key 'r' to reset (neutral face).\n");
-			ImGui::Text("After reset, the last parameters will show up\n");
-			ImGui::Text("in the command window.\n");
-			ImGui::SliderFloat("open_smile", &alpha[0], 0.0f, 1.0f);
-			ImGui::SliderFloat("blink_upper_lid", &alpha[1], 0.0f, 1.0f);
-			ImGui::SliderFloat("closed_smile", &alpha[2], 0.0f, 1.0f);
-			ImGui::SliderFloat("lower_lip_drop", &alpha[3], 0.0f, 1.0f);
-			ImGui::SliderFloat("surprised", &alpha[4], 0.0f, 1.0f);
-			ImGui::SliderFloat("wide_mouth_open", &alpha[5], 0.0f, 1.0f);
-			ImGui::SliderFloat("frown", &alpha[6], 0.0f, 1.0f);
+		ImGui::Text("The parameters to adjust the facial features.\n");
+		ImGui::Text("Press key 's' to start auto-face.\n");
+		ImGui::Text("Press key 'r' to reset (neutral face).\n");
+		ImGui::Text("After reset, the last parameters will show up\n");
+		ImGui::Text("in the command window.\n");
+		ImGui::SliderFloat("open_smile", &alpha[0], 0.0f, 1.0f);
+		ImGui::SliderFloat("blink_upper_lid", &alpha[1], 0.0f, 1.0f);
+		ImGui::SliderFloat("closed_smile", &alpha[2], 0.0f, 1.0f);
+		ImGui::SliderFloat("lower_lip_drop", &alpha[3], 0.0f, 1.0f);
+		ImGui::SliderFloat("surprised", &alpha[4], 0.0f, 1.0f);
+		ImGui::SliderFloat("wide_mouth_open", &alpha[5], 0.0f, 1.0f);
+		ImGui::SliderFloat("frown", &alpha[6], 0.0f, 1.0f);
 
-			ImGui::InputText("frame", frame, sizeof(frame));
-			//printf("frame: %f\n", (float)atof(frame));
+		ImGui::InputText("frame", frame, sizeof(frame));
+		//printf("frame: %f\n", (float)atof(frame));
 
-			ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
-			ImGui::End();
-			glViewport(0, 0, (int)ImGui::GetIO().DisplaySize.x, (int)ImGui::GetIO().DisplaySize.y);
+		ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
+		ImGui::End();
+		glViewport(0, 0, (int)ImGui::GetIO().DisplaySize.x, (int)ImGui::GetIO().DisplaySize.y);
 
-			ImGui::Render();
-			ImGui_ImplSdlGL3_RenderDrawData(ImGui::GetDrawData());
-		}
-		else {
-			for (int i = 0; i < face_num; i++) {
-				if (alpha[i] < perfect[i]) {
-					alpha[i] += (perfect[i] - alpha[i]) / (float)atof(frame);
-				}
-			}
-		}
+		ImGui::Render();
+		ImGui_ImplSdlGL3_RenderDrawData(ImGui::GetDrawData());
 
+		idx_loop++;
 		SDL_GL_SwapWindow(window);
 	}
 
@@ -445,7 +420,6 @@ int main(int argc, char *argv[]) {
 	free(base_head);
 	free(faces);
 	free(alpha);
-	free(perfect);
 	free(point);
 	free(edge);
     return 0;
