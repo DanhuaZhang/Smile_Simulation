@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.5.1)
+cmake_minimum_required(VERSION 3.7.1)
 
 ############################################################################
 
@@ -43,6 +43,8 @@ endif()
 set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
 find_package(SDL2 REQUIRED)
 include_directories(${SDL2_INCLUDE_DIR})
+
+message( "Sdl2 include dir: ${SDL2_INCLUDE_DIR}" )
 
 ###########################################################################
 
@@ -113,7 +115,6 @@ set( SOURCES
 	"${PROJECT_SOURCE_DIR}/parsehead/stdafx.cpp"
 	"${PROJECT_SOURCE_DIR}/parsehead/blendcalc.cpp"
 	"${PROJECT_SOURCE_DIR}/parsehead/main.cpp"
-	"${PROJECT_SOURCE_DIR}/parsehead/test_gpqp_solv.cpp"
 )
 
 ###########################################################################
@@ -153,7 +154,8 @@ configure_file( "${PROJECT_SOURCE_DIR}/SDL2-2.0.8/lib/x86/SDL2.dll"
 target_include_directories( smile_sim PUBLIC
 	"${PROJECT_SOURCE_DIR}/parsehead/imgui"
 	"${PROJECT_SOURCE_DIR}/parsehead/glad"
-	"${PROJECT_SOURCE_DIR}/parsehead/glm"
+	"${PROJECT_SOURCE_DIR}/SDL2-2.0.8/include"
+	"${SDL2_INCLUDE_DIR}"
 )
 
 ###########################################################################
