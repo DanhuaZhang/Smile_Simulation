@@ -16,3 +16,10 @@ struct blendcalc
     Eigen::VectorXf blend_x; //column vector
     Eigen::VectorXf blend_b; //column vector
 };
+
+struct PointData
+{
+    glm::vec2 orginal_pos;
+    glm::vec2 offset;
+    unsigned id;
+};

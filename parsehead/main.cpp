@@ -7,6 +7,27 @@ int screen_height = 600;
 bool fullscreen = false;
 int iter_num = 100;
 
+static float s_mouse_down = false;
+static bool  s_bTranslate = false;
+static bool  s_bRotate = false;
+static bool  s_bScale = false;
+
+static unsigned s_selected_verts = 0;
+
+static void mouseClicked(float mx, float my);
+static void mouseDragged(float mx, float my);
+
+// edge stores the bound of each facial feature
+// the basic points for canonical space, 1450 is used as origin and combine 3542 to make a line
+static const int edgeidx[] = { 
+	797, 133, 3542, 1450, 9807, 9928, 18028, 18150, 14813, 6565, 
+	12, 14116, 5853, 15909, 7669, 14928, 6675, 22524, 5643 
+};
+
+static const unsigned edge_numVerts = sizeof( edgeidx ) / sizeof( int );
+
+static PointData modified_points[ edge_numVerts ];
+
 int main(int argc, char *argv[]) {	
 
 	if( argc > 1 ) screen_width = (int)strtol(argv[1], NULL, 10);
@@ -34,17 +55,14 @@ int main(int argc, char *argv[]) {
 		return -1;
 	}
 
+	for( int i = 0; i < edge_numVerts; i++ ) {
+		modified_points[i].id = edgeidx[i];
+	}
+
 	//Load face model
 	GLuint tex0 = AllocateTexture(TEX_DIR "/head_BaseColor.bmp", 0);
 	int face_num = 7;
 	int model_numVerts = 0;
-
-	// edge stores the bound of each facial feature
-	// the basic points for canonical space, 1450 is used as origin and combine 3542 to make a line
-	int edgeidx[] = { 797, 133, 3542, 1450, 9807, 9928, 18028, 18150, 14813, 6565,\
-						12, 14116, 5853, 15909, 7669, 14928, 6675, 22524, 5643 };
-	
-	int edge_numVerts = sizeof(edgeidx) / sizeof(int);
 
 	glm::vec3** edge = (glm::vec3**)malloc(sizeof(glm::vec3*) * (face_num + 1));
 	for (int i = 0; i < face_num + 1; i++) {
@@ -260,6 +278,20 @@ int main(int argc, char *argv[]) {
 			ImGui_ImplSdlGL3_ProcessEvent(&windowEvent);
 		}
 
+		int mx, my;
+		if (SDL_GetMouseState(&mx, &my) & SDL_BUTTON(SDL_BUTTON_LEFT)) {
+			if (s_mouse_down == false){
+				mouseClicked(mx/(float)screen_width, 1-my/(float)screen_height);
+			} 
+			else{
+				mouseDragged(mx/(float)screen_width, 1-my/(float)screen_height);
+			}
+			s_mouse_down = true;
+		} 
+		else{
+			s_mouse_down = false;
+		}
+
 		glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 		
@@ -423,4 +455,24 @@ int main(int argc, char *argv[]) {
 	free(point);
 	free(edge);
     return 0;
+}
+
+static void mouseClicked(float m_x, float m_y) {
+
+   printf("Clicked at %f, %f\n",m_x,m_y);
+   
+   //Let's assume the user clicked in the middle of the square
+   s_bTranslate = true;
+   s_bRotate = false;
+   s_bScale = false;
+}
+
+static void mouseDragged(float m_x, float m_y) {
+
+   printf("Dragging through %f, %f\n",m_x,m_y);
+   
+   if (s_bTranslate){
+    //   s_pos_x = m_x;
+    //   s_pos_y = m_y;
+   }
 }
