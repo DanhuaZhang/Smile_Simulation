@@ -23,3 +23,7 @@ struct PointData
     glm::vec2 offset;
     unsigned id;
 };
+
+unsigned select_closest_point( const PointData p_data[],
+							   const float x_pos,
+							   const float y_pos );

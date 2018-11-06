@@ -13,7 +13,7 @@ static bool  s_bTranslate = false;
 static bool  s_bRotate = false;
 static bool  s_bScale = false;
 
-static unsigned s_selected_verts = 0;
+static unsigned s_selected_verts = 2;
 
 static void mouseClicked(float mx, float my);
 static void mouseDragged(float mx, float my);
@@ -241,6 +241,7 @@ int main(int argc, char *argv[]) {
 	}
 	free(bh_fpoint);	
 
+	// initialize modified_points array for face
 	for( int i = 0; i < edge_numVerts; i++ ) {
 		s_modified_points[i].id = edgeidx[i];
 		s_modified_points[i].orginal_pos.x = blendsys.blend_b(2 * i);
@@ -305,10 +306,10 @@ int main(int argc, char *argv[]) {
 		int mx, my;
 		if (SDL_GetMouseState(&mx, &my) & SDL_BUTTON(SDL_BUTTON_LEFT)) {
 			if (s_mouse_down == false){
-				mouseClicked(mx/(float)screen_width, 1-my/(float)screen_height);
+				mouseClicked( (float)mx, (float)(screen_height - my));
 			} 
 			else{
-				mouseDragged(mx/(float)screen_width, 1-my/(float)screen_height);
+				mouseDragged((float)mx, (float)(screen_height - my));
 			}
 			s_mouse_down = true;
 		} 
@@ -343,6 +344,17 @@ int main(int argc, char *argv[]) {
 				point[k + 1] += alpha[j] * (edge[j][i].y - edge[face_num][i].y);
 				point[k + 2] += alpha[j] * (edge[j][i].z - edge[face_num][i].z);
 			}
+		}
+
+		// transform vertices to screen space
+		const glm::mat4 MVP = proj * view;
+		glm::vec4 NDC_space, clip_space;
+		for( int i = 0; i < edge_numVerts; i++ ) {
+			clip_space = MVP * glm::vec4(edge[face_num][i], 1.0);
+			NDC_space = clip_space / clip_space.z;
+
+			s_modified_points[i].orginal_pos.x = ( NDC_space.x + 1.f ) * ( screen_width / 2.f );
+			s_modified_points[i].orginal_pos.y = ( NDC_space.y + 1.f ) * ( screen_height / 2.f );
 		}
 
 		//Load the face model to buffer
@@ -457,7 +469,7 @@ int main(int argc, char *argv[]) {
 		ImGui::Text( "Selected face vertex: %u", selected_point.id );
 		
 		glm::vec2 canon_pos( selected_point.orginal_pos + selected_point.offset );
-		ImGui::InputFloat2( "2D canonical pos", &canon_pos[0] );
+		ImGui::InputFloat2( "2D screen pos", &canon_pos[0] );
 		selected_point.offset = canon_pos - selected_point.orginal_pos;
 
 		ImGui::Separator();
