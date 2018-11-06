@@ -6,7 +6,6 @@ Config.h
 
 #**************** General folders to always ignore ************************
 
-cmake
 .vscode
 release
 Release

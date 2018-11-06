@@ -7,7 +7,8 @@ int screen_height = 600;
 bool fullscreen = false;
 int iter_num = 100;
 
-static float s_mouse_down = false;
+static bool s_mouse_down = false;
+
 static bool  s_bTranslate = false;
 static bool  s_bRotate = false;
 static bool  s_bScale = false;
@@ -16,6 +17,19 @@ static unsigned s_selected_verts = 0;
 
 static void mouseClicked(float mx, float my);
 static void mouseDragged(float mx, float my);
+
+#ifdef _WIN32
+
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+
+#include <io.h>
+#include <fcntl.h>
+#include <Windows.h>
+
+static void create_console();
+#endif
 
 // edge stores the bound of each facial feature
 // the basic points for canonical space, 1450 is used as origin and combine 3542 to make a line
@@ -26,7 +40,7 @@ static const int edgeidx[] = {
 
 static const unsigned edge_numVerts = sizeof( edgeidx ) / sizeof( int );
 
-static PointData modified_points[ edge_numVerts ];
+static PointData s_modified_points[ edge_numVerts ];
 
 int main(int argc, char *argv[]) {	
 
@@ -55,9 +69,9 @@ int main(int argc, char *argv[]) {
 		return -1;
 	}
 
-	for( int i = 0; i < edge_numVerts; i++ ) {
-		modified_points[i].id = edgeidx[i];
-	}
+#ifdef _WIN32
+	create_console();
+#endif
 
 	//Load face model
 	GLuint tex0 = AllocateTexture(TEX_DIR "/head_BaseColor.bmp", 0);
@@ -195,6 +209,7 @@ int main(int argc, char *argv[]) {
 		}
 	}
 
+
 	//read the sample data
 	//point: x, y, z
 	float* point = (float *)calloc(edge_numVerts * 3, sizeof(float));
@@ -225,6 +240,15 @@ int main(int argc, char *argv[]) {
 		}		
 	}
 	free(bh_fpoint);	
+
+	for( int i = 0; i < edge_numVerts; i++ ) {
+		s_modified_points[i].id = edgeidx[i];
+		s_modified_points[i].orginal_pos.x = blendsys.blend_b(2 * i);
+		s_modified_points[i].orginal_pos.y = blendsys.blend_b(2 * i + 1);
+
+		s_modified_points[i].offset.x = 0.f;
+		s_modified_points[i].offset.y = 0.f;
+	}
 
 	//FILE *fpx = fopen(SHADER_DIR "/X.txt", "w+");
 	//if (fpx == NULL) {
@@ -426,6 +450,18 @@ int main(int argc, char *argv[]) {
 		ImGui::SliderFloat("wide_mouth_open", &alpha[5], 0.0f, 1.0f);
 		ImGui::SliderFloat("frown", &alpha[6], 0.0f, 1.0f);
 
+		ImGui::Separator();
+
+		PointData& selected_point = s_modified_points[s_selected_verts];
+
+		ImGui::Text( "Selected face vertex: %u", selected_point.id );
+		
+		glm::vec2 canon_pos( selected_point.orginal_pos + selected_point.offset );
+		ImGui::InputFloat2( "2D canonical pos", &canon_pos[0] );
+		selected_point.offset = canon_pos - selected_point.orginal_pos;
+
+		ImGui::Separator();
+
 		ImGui::InputText("frame", frame, sizeof(frame));
 		//printf("frame: %f\n", (float)atof(frame));
 
@@ -476,3 +512,30 @@ static void mouseDragged(float m_x, float m_y) {
     //   s_pos_y = m_y;
    }
 }
+
+#ifdef _WIN32
+
+static void create_console() {
+	FreeConsole();
+
+	DWORD err_code = -1;
+	const bool success = AllocConsole();
+
+	if( !success ) {
+		err_code = GetLastError();
+	} else {
+		HANDLE handle_out = GetStdHandle(STD_OUTPUT_HANDLE);
+		int hCrt = _open_osfhandle((long) handle_out, _O_TEXT);
+		FILE* hf_out = _fdopen(hCrt, "w");
+		setvbuf(hf_out, NULL, _IONBF, 1);
+		*stdout = *hf_out;
+
+		HANDLE handle_in = GetStdHandle(STD_INPUT_HANDLE);
+		hCrt = _open_osfhandle((long) handle_in, _O_TEXT);
+		FILE* hf_in = _fdopen(hCrt, "r");
+		setvbuf(hf_in, NULL, _IONBF, 128);
+		*stdin = *hf_in;
+	}
+}
+
+#endif
