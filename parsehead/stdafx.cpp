@@ -573,7 +573,7 @@ GLuint LoadToVAO_Point(GLuint shaderprogram) {
 	glBindVertexArray(vao);
 
 	GLint posAttrib = glGetAttribLocation(shaderprogram, "position");
-	glVertexAttribPointer(posAttrib, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), 0);
+	glVertexAttribPointer(posAttrib, 4, GL_FLOAT, GL_FALSE, 4 * sizeof(float), 0);
 	glEnableVertexAttribArray(posAttrib);
 
 	glBindVertexArray(0); //Unbind the VAO

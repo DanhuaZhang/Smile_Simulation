@@ -8,12 +8,10 @@ bool fullscreen = false;
 int iter_num = 100;
 
 static bool s_mouse_down = false;
+static float s_mouse_xpos = -1.f;
+static float s_mouse_ypos = -1.f;
 
-static bool  s_bTranslate = false;
-static bool  s_bRotate = false;
-static bool  s_bScale = false;
-
-static unsigned s_selected_verts = 2;
+static int s_selected_vert = -1;
 
 static void mouseClicked(float mx, float my);
 static void mouseDragged(float mx, float my);
@@ -42,7 +40,7 @@ static const unsigned edge_numVerts = sizeof( edgeidx ) / sizeof( int );
 
 static PointData s_modified_points[ edge_numVerts ];
 
-int main(int argc, char *argv[]) {	
+int main(int argc, char *argv[]) {
 
 	if( argc > 1 ) screen_width = (int)strtol(argv[1], NULL, 10);
 	if( argc > 2 ) screen_height = (int)strtol(argv[2], NULL, 10);
@@ -137,6 +135,8 @@ int main(int argc, char *argv[]) {
 
 	SDL_Event windowEvent;
 
+	GLint uniColorFlag = glGetUniformLocation(PointShaderProgram, "color_flag");
+
 	GLuint uniColor = glGetUniformLocation(ShaderProgram, "inColor");
 	GLuint uniProj = glGetUniformLocation(ShaderProgram, "proj");
 	GLuint uniView = glGetUniformLocation(ShaderProgram, "view");
@@ -148,6 +148,8 @@ int main(int argc, char *argv[]) {
 	glLineWidth(line_width);
 	float point_size = 3.0f;
 	glPointSize(point_size);
+
+	unsigned color_flag = 0;
 
 	//parameters for face interpolation
 	float* alpha = (float *)calloc(face_num, sizeof(float));
@@ -212,7 +214,7 @@ int main(int argc, char *argv[]) {
 
 	//read the sample data
 	//point: x, y, z
-	float* point = (float *)calloc(edge_numVerts * 3, sizeof(float));
+	float* point = (float *)calloc(edge_numVerts * 4, sizeof(float));
 	Eigen::MatrixXf feature_csv;
 	//read the feature points from .csv files
 	GetCSVFile(feature_csv, CAN_DIR "/28162_s_canon.csv", edge_numVerts);
@@ -298,6 +300,10 @@ int main(int argc, char *argv[]) {
 			//reset
 			if (windowEvent.type == SDL_KEYUP && windowEvent.key.keysym.sym == SDLK_r) {
 				idx_loop = 0;
+
+				for( unsigned i = 0; i < edge_numVerts; i++ ) {
+					s_modified_points[i].offset.x = s_modified_points[i].offset.y = 0.f;
+				}
 			}
 
 			ImGui_ImplSdlGL3_ProcessEvent(&windowEvent);
@@ -333,8 +339,10 @@ int main(int argc, char *argv[]) {
 			}
 		}
 
+		color_flag = 0;
+
 		// face_num = 7
-		for (int i = 0, k = 0; i < edge_numVerts; i++, k += 3) {
+		for (int i = 0, k = 0; i < edge_numVerts; i++, k += 4) {
 			point[k] = edge[face_num][i].x;
 			point[k + 1] = edge[face_num][i].y;
 			point[k + 2] = edge[face_num][i].z;
@@ -344,17 +352,42 @@ int main(int argc, char *argv[]) {
 				point[k + 1] += alpha[j] * (edge[j][i].y - edge[face_num][i].y);
 				point[k + 2] += alpha[j] * (edge[j][i].z - edge[face_num][i].z);
 			}
+
+			if( i == s_selected_vert ) {
+				color_flag |= ( 1 << s_selected_vert );
+			}
 		}
 
 		// transform vertices to screen space
 		const glm::mat4 MVP = proj * view;
+		const glm::mat4 invMVP = glm::inverse( MVP );
 		glm::vec4 NDC_space, clip_space;
 		for( int i = 0; i < edge_numVerts; i++ ) {
-			clip_space = MVP * glm::vec4(edge[face_num][i], 1.0);
-			NDC_space = clip_space / clip_space.z;
+			const unsigned idx = i * 4;
 
-			s_modified_points[i].orginal_pos.x = ( NDC_space.x + 1.f ) * ( screen_width / 2.f );
-			s_modified_points[i].orginal_pos.y = ( NDC_space.y + 1.f ) * ( screen_height / 2.f );
+			clip_space = MVP * glm::vec4(
+				point[idx], point[idx + 1], point[idx + 2], 1.0 );
+			NDC_space = clip_space / clip_space.w;
+
+			s_modified_points[i].orginal_pos.x = 
+				( NDC_space.x + 1.f ) * ( screen_width / 2.f );
+			s_modified_points[i].orginal_pos.y = 
+				( NDC_space.y + 1.f ) * ( screen_height / 2.f );
+
+			// modify position
+			point[idx] = clip_space.x;
+			point[idx + 1] = clip_space.y;
+			point[idx + 2] = clip_space.z;
+			point[idx + 3] = clip_space.w;
+		}
+
+		if( s_mouse_down ) {
+			s_selected_vert = select_closest_point( 
+				s_modified_points, 
+				(int)edge_numVerts, 
+				15.f,
+				s_mouse_xpos, 
+				s_mouse_ypos );
 		}
 
 		//Load the face model to buffer
@@ -381,20 +414,24 @@ int main(int argc, char *argv[]) {
 
 		//Load the points to buffer
 		glBindBuffer(GL_ARRAY_BUFFER, vbo_point);
-		glBufferData(GL_ARRAY_BUFFER, sizeof(float)*edge_numVerts * 3, point, GL_STATIC_DRAW);
+		glBufferData(GL_ARRAY_BUFFER, sizeof(float)*edge_numVerts * 4, point, GL_STATIC_DRAW);
 
 		//draw the edge points
 		glUseProgram(PointShaderProgram);
+
+		// set color_flag
+		glUniform1ui( uniColorFlag, color_flag );
+
 		GLuint vao_point = LoadToVAO_Point(PointShaderProgram);
 		glBindVertexArray(vao_point);
 
 		inColor = glm::vec3(0.0, 1.0, 0.0);
 		glUniform3f(uniColor, inColor.r, inColor.g, inColor.b);
-		glUniformMatrix4fv(uniProj, 1, GL_FALSE, glm::value_ptr(proj));
-		glUniformMatrix4fv(uniView, 1, GL_FALSE, glm::value_ptr(view));
+		// glUniformMatrix4fv(uniProj, 1, GL_FALSE, glm::value_ptr(proj));
+		// glUniformMatrix4fv(uniView, 1, GL_FALSE, glm::value_ptr(view));
 
-		glm::mat4 pointmat(1.0f);
-		glUniformMatrix4fv(uniModel, 1, GL_FALSE, glm::value_ptr(pointmat));
+		// glm::mat4 pointmat(1.0f);
+		// glUniformMatrix4fv(uniModel, 1, GL_FALSE, glm::value_ptr(pointmat));
 
 		glDrawArrays(GL_POINTS, 0, edge_numVerts);
 		glBindVertexArray(0);
@@ -462,17 +499,20 @@ int main(int argc, char *argv[]) {
 		ImGui::SliderFloat("wide_mouth_open", &alpha[5], 0.0f, 1.0f);
 		ImGui::SliderFloat("frown", &alpha[6], 0.0f, 1.0f);
 
-		ImGui::Separator();
+		if( s_selected_vert >= 0 ) {
+			ImGui::Separator();
 
-		PointData& selected_point = s_modified_points[s_selected_verts];
+			PointData& selected_point = s_modified_points[s_selected_vert];
 
-		ImGui::Text( "Selected face vertex: %u", selected_point.id );
-		
-		glm::vec2 canon_pos( selected_point.orginal_pos + selected_point.offset );
-		ImGui::InputFloat2( "2D screen pos", &canon_pos[0] );
-		selected_point.offset = canon_pos - selected_point.orginal_pos;
+			ImGui::Text( "Selected face vertex: %u", selected_point.id );
+			
+			glm::vec2 canon_pos( 
+				selected_point.orginal_pos + selected_point.offset );
+			ImGui::InputFloat2( "2D screen pos", &canon_pos[0] );
+			selected_point.offset = canon_pos - selected_point.orginal_pos;
 
-		ImGui::Separator();
+			ImGui::Separator();
+		}
 
 		ImGui::InputText("frame", frame, sizeof(frame));
 		//printf("frame: %f\n", (float)atof(frame));
@@ -502,27 +542,23 @@ int main(int argc, char *argv[]) {
 	free(alpha);
 	free(point);
 	free(edge);
-    return 0;
+	return 0;
 }
 
 static void mouseClicked(float m_x, float m_y) {
-
-   printf("Clicked at %f, %f\n",m_x,m_y);
-   
-   //Let's assume the user clicked in the middle of the square
-   s_bTranslate = true;
-   s_bRotate = false;
-   s_bScale = false;
+	s_mouse_xpos = m_x;
+	s_mouse_ypos = m_y;
 }
 
 static void mouseDragged(float m_x, float m_y) {
+	s_mouse_xpos = m_x;
+	s_mouse_ypos = m_y;
 
-   printf("Dragging through %f, %f\n",m_x,m_y);
-   
-   if (s_bTranslate){
-    //   s_pos_x = m_x;
-    //   s_pos_y = m_y;
-   }
+	if( s_selected_vert >= 0 ){
+		s_modified_points[s_selected_vert].offset = 
+			glm::vec2( m_x, m_y ) - 
+			s_modified_points[s_selected_vert].orginal_pos;
+	}
 }
 
 #ifdef _WIN32
