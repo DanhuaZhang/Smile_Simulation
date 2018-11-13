@@ -19,8 +19,8 @@ struct blendcalc
 
 struct PointData
 {
-    glm::vec2 orginal_pos;
-    glm::vec2 offset;
+    glm::vec2 orginal_pos  = glm::vec2( 0.f );
+    glm::vec2 offset = glm::vec2( 0.f );
     unsigned id;
 };
 

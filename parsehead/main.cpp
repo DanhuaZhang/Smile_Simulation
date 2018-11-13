@@ -360,8 +360,10 @@ int main(int argc, char *argv[]) {
 
 		// transform vertices to screen space
 		const glm::mat4 MVP = proj * view;
-		const glm::mat4 invMVP = glm::inverse( MVP );
+		const float half_width = ( screen_width / 2.f );
+		const float half_height = ( screen_height / 2.f );
 		glm::vec4 NDC_space, clip_space;
+		
 		for( int i = 0; i < edge_numVerts; i++ ) {
 			const unsigned idx = i * 4;
 
@@ -370,13 +372,19 @@ int main(int argc, char *argv[]) {
 			NDC_space = clip_space / clip_space.w;
 
 			s_modified_points[i].orginal_pos.x = 
-				( NDC_space.x + 1.f ) * ( screen_width / 2.f );
+				( NDC_space.x + 1.f ) * half_width;
 			s_modified_points[i].orginal_pos.y = 
-				( NDC_space.y + 1.f ) * ( screen_height / 2.f );
+				( NDC_space.y + 1.f ) * half_height;
 
-			// modify position
-			point[idx] = clip_space.x;
-			point[idx + 1] = clip_space.y;
+			// transform offset in clip space
+			float clip_offset_w = 
+				( s_modified_points[i].offset.x / (float)screen_width ) * 2.f;
+			float clip_offset_h = 
+				( s_modified_points[i].offset.y / (float)screen_height ) * 2.f;
+
+			// modify rendered position
+			point[idx] = clip_space.x + clip_offset_w;
+			point[idx + 1] = clip_space.y + clip_offset_h;
 			point[idx + 2] = clip_space.z;
 			point[idx + 3] = clip_space.w;
 		}
@@ -414,7 +422,7 @@ int main(int argc, char *argv[]) {
 
 		//Load the points to buffer
 		glBindBuffer(GL_ARRAY_BUFFER, vbo_point);
-		glBufferData(GL_ARRAY_BUFFER, sizeof(float)*edge_numVerts * 4, point, GL_STATIC_DRAW);
+		glBufferData(GL_ARRAY_BUFFER, sizeof(float)*edge_numVerts * 4, point, GL_DYNAMIC_DRAW);
 
 		//draw the edge points
 		glUseProgram(PointShaderProgram);
