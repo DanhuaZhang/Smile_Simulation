@@ -1,4 +1,5 @@
 #include "blendcalc.h"
+#include "gpqp_solv.hpp"
 #include <float.h>
 
 int select_closest_point(const PointData p_data[],
@@ -22,4 +23,27 @@ int select_closest_point(const PointData p_data[],
 	}
 
 	return closest_point_idx;
+}
+
+Eigen::VectorXf calc_blend_values( blendcalc blend_data, 
+                                   Eigen::VectorXf feature_data,
+                                   uint face_count,
+                                   uint num_iterations )
+{
+	Eigen::VectorXf X = Eigen::VectorXf( face_count );
+
+	blend_data.blend_b = feature_data;
+
+	Eigen::VectorXf x_0 = Eigen::VectorXf::Ones(face_count) * 0.5f;
+	Eigen::VectorXf x_lb = Eigen::VectorXf::Zero(face_count);
+	Eigen::VectorXf x_ub = Eigen::VectorXf::Ones(face_count);
+
+	blend_data.blend_x = GPQPSolver::Solve(blend_data.blend_a, blend_data.blend_b, x_lb, x_ub, x_0, num_iterations);
+	
+	// store calculated weights
+	for (int i = 0; i < face_count; i++) {
+		X(i) = blend_data.blend_x(i);
+	}
+
+	return X;
 }

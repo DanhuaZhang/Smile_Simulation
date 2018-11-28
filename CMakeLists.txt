@@ -161,7 +161,7 @@ target_include_directories( smile_sim PUBLIC
 ###########################################################################
 
 if(UNIX)
-	target_link_libraries( smile_sim ${SDL2_LIBRARY} "-ldl" )
+	target_link_libraries( smile_sim ${SDL2_LIBRARY} "-ldl -lpthread" )
 elseif(MSVC)
     target_link_libraries( smile_sim ${SDL2_LIBRARY} 
 		"${PROJECT_SOURCE_DIR}/SDL2-2.0.8/lib/x86/SDL2main.lib")

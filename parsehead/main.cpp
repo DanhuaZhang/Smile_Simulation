@@ -1,6 +1,7 @@
 #include "stdafx.h"
 #include "blendcalc.h"
 #include "gpqp_solv.hpp"
+#include <future>
 
 int screen_width = 1000;
 int screen_height = 600;
@@ -39,6 +40,8 @@ static const int edgeidx[] = {
 static const unsigned edge_numVerts = sizeof( edgeidx ) / sizeof( int );
 
 static PointData s_modified_points[ edge_numVerts ];
+
+std::future<Eigen::VectorXf> s_async_blend_calc;
 
 int main(int argc, char *argv[]) {
 
@@ -211,37 +214,13 @@ int main(int argc, char *argv[]) {
 		}
 	}
 
-
 	//read the sample data
 	//point: x, y, z
 	float* point = (float *)calloc(edge_numVerts * 4, sizeof(float));
 	Eigen::MatrixXf feature_csv;
 	//read the feature points from .csv files
 	GetCSVFile(feature_csv, CAN_DIR "/28162_s_canon.csv", edge_numVerts);
-	
-	Eigen::MatrixXf X = Eigen::MatrixXf(face_num + 1, feature_csv.cols());
-	for (int j = 0; j < feature_csv.cols(); j++) {
-		blendsys.blend_b = feature_csv.block(1, j, feature_csv.rows() - 1, 1); // i,j,p,q: start(i,j), size: p-by-q
-																				// the first line is time
-		for (int i = 0; i < edge_numVerts; i++) {
-			blendsys.blend_b(2 * i) -= bh_fpoint[i].x;
-			blendsys.blend_b(2 * i + 1) -= bh_fpoint[i].y;
-		}
-
-		Eigen::VectorXf x_0 = Eigen::VectorXf::Ones(face_num) * 0.5f;
-		Eigen::VectorXf x_lb = Eigen::VectorXf::Zero(face_num);
-		Eigen::VectorXf x_ub = Eigen::VectorXf::Ones(face_num);
-
-		blendsys.blend_x = GPQPSolver::Solve(blendsys.blend_a, blendsys.blend_b, x_lb, x_ub, x_0, iter_num);
-		
-		// store time
-		X(0, j) = feature_csv(0, j);
-		// store calculated weights
-		for (int i = 0; i < face_num; i++) {
-			X(i + 1, j) = blendsys.blend_x(i);
-		}		
-	}
-	free(bh_fpoint);	
+	blendsys.blend_b = feature_csv.block(1, 0, feature_csv.rows() - 1, 1);
 
 	// initialize modified_points array for face
 	for( int i = 0; i < edge_numVerts; i++ ) {
@@ -253,39 +232,19 @@ int main(int argc, char *argv[]) {
 		s_modified_points[i].offset.y = 0.f;
 	}
 
-	//FILE *fpx = fopen(SHADER_DIR "/X.txt", "w+");
-	//if (fpx == NULL) {
-	//	printf("error open X.txt\n");
-	//}
-	//for (int i = 0; i < X.rows(); i++) {
-	//	fprintf(fpx, "%d\t", i);
-	//	for (int j = 0; j < X.cols(); j++) {
-	//		fprintf(fpx, "%f ", X(i, j));
-	//	}
-	//	fprintf(fpx, "\n");
-	//}
-	//fclose(fpx);
-
-	//interpolation between weights according to time
-	Eigen::MatrixXf weights;
-	float time_interval = 0.01f;
-	Interpolation(X, weights, time_interval);
-	
-	//FILE *fpw = fopen(SHADER_DIR "/Weights.txt", "w+");
-	//if (fpw == NULL) {
-	//	printf("error open Weights.txt\n");
-	//}
-	//for (int i = 0; i < weights.rows(); i++) {
-	//	fprintf(fpw, "%d\t", i);
-	//	for (int j = 0; j < weights.cols(); j++) {
-	//		fprintf(fpw, "%f ", weights(i, j));
-	//	}
-	//	fprintf(fpw, "\n");
-	//}
-	//fclose(fpw);
-
-	int idx_loop = 0; // frame counter
 	bool show_window = false;
+	bool check_progress = false;
+	bool trigger_recalc = false;
+	Eigen::VectorXf Calc_X;
+	int frame_index = 0;
+	const uint max_frames = feature_csv.rows();
+
+	float scr_to_canon_w = scale * unit;
+	float scr_to_canon_h = scr_to_canon_w * 
+		( (float)screen_height / (float)screen_width );
+	
+	scr_to_canon_w = 1.f / scr_to_canon_w;
+	scr_to_canon_h = 1.f / scr_to_canon_h;
 
 	bool quit = false;
 	while (!quit) {
@@ -299,14 +258,52 @@ int main(int argc, char *argv[]) {
 
 			//reset
 			if (windowEvent.type == SDL_KEYUP && windowEvent.key.keysym.sym == SDLK_r) {
-				idx_loop = 0;
-
 				for( unsigned i = 0; i < edge_numVerts; i++ ) {
 					s_modified_points[i].offset.x = s_modified_points[i].offset.y = 0.f;
 				}
 			}
 
+			if ( (windowEvent.type == SDL_KEYUP && windowEvent.key.keysym.sym ==
+				 SDLK_c) || trigger_recalc ) 
+			{
+				trigger_recalc = false;
+
+				if( !check_progress )
+				{
+					Eigen::VectorXf feature_pnt = feature_csv.block(1, frame_index, feature_csv.rows() - 1, 1);
+
+					for( int i = 0; i < edge_numVerts; i++ )
+					{
+						feature_pnt(i * 2) -= bh_fpoint[i].x + 
+							s_modified_points[i].offset.x * scr_to_canon_w * unit;
+						feature_pnt(i * 2 + 1) -= bh_fpoint[i].y -
+							s_modified_points[i].offset.y * scr_to_canon_h * unit;
+
+						printf( "Feature x (%d): \n  original = %.5f\n  mine = %.5f\n", 
+						i,
+						bh_fpoint[i].x,
+						s_modified_points[i].offset.x * scr_to_canon_w * unit);
+					}
+					// Spawn calculation on separate thread
+					s_async_blend_calc = std::async( std::launch::async, calc_blend_values, blendsys, feature_pnt, face_num, iter_num );
+					
+					check_progress = true;
+				}
+			}
+
 			ImGui_ImplSdlGL3_ProcessEvent(&windowEvent);
+		}
+
+		if( check_progress )
+		{
+			if (s_async_blend_calc.wait_for(std::chrono::seconds( 0 )) == std::future_status::ready) 
+			{
+				Calc_X = s_async_blend_calc.get();
+				for (int i = 0; i < face_num; i++)
+					alpha[i] = Calc_X(i);
+
+				check_progress = false;
+			}
 		}
 
 		int mx, my;
@@ -326,11 +323,11 @@ int main(int argc, char *argv[]) {
 		glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 		
-		if (idx_loop < weights.cols()) {
-			for (int i = 0; i < face_num; i++) {
-				alpha[i] = weights(i, idx_loop);
-			}
-		}
+		// if (idx_loop < weights.cols()) {
+		// 	for (int i = 0; i < face_num; i++) {
+		// 		alpha[i] = weights(i, idx_loop);
+		// 	}
+		// }
 
 		for (int i = 0; i < model_numVerts * 8; i++) {
 			face[i] = base_head[i];
@@ -377,14 +374,14 @@ int main(int argc, char *argv[]) {
 				( NDC_space.y + 1.f ) * half_height;
 
 			// transform offset in clip space
-			float clip_offset_w = 
-				( s_modified_points[i].offset.x / (float)screen_width ) * 2.f;
-			float clip_offset_h = 
-				( s_modified_points[i].offset.y / (float)screen_height ) * 2.f;
+			float ndc_offset_w = 
+				(( s_modified_points[i].offset.x / (float)screen_width ) * 2.f);
+			float ndc_offset_h = 
+				(( s_modified_points[i].offset.y / (float)screen_height ) * 2.f);
 
 			// modify rendered position
-			point[idx] = clip_space.x + clip_offset_w;
-			point[idx + 1] = clip_space.y + clip_offset_h;
+			point[idx] = clip_space.x + (ndc_offset_w * clip_space.w);
+			point[idx + 1] = clip_space.y + ( ndc_offset_h * clip_space.w );
 			point[idx + 2] = clip_space.z;
 			point[idx + 3] = clip_space.w;
 		}
@@ -393,7 +390,7 @@ int main(int argc, char *argv[]) {
 			s_selected_vert = select_closest_point( 
 				s_modified_points, 
 				(int)edge_numVerts, 
-				15.f,
+				10.f,
 				s_mouse_xpos, 
 				s_mouse_ypos );
 		}
@@ -435,14 +432,11 @@ int main(int argc, char *argv[]) {
 
 		inColor = glm::vec3(0.0, 1.0, 0.0);
 		glUniform3f(uniColor, inColor.r, inColor.g, inColor.b);
-		// glUniformMatrix4fv(uniProj, 1, GL_FALSE, glm::value_ptr(proj));
-		// glUniformMatrix4fv(uniView, 1, GL_FALSE, glm::value_ptr(view));
 
-		// glm::mat4 pointmat(1.0f);
-		// glUniformMatrix4fv(uniModel, 1, GL_FALSE, glm::value_ptr(pointmat));
-
+		glDisable(GL_DEPTH_TEST);
 		glDrawArrays(GL_POINTS, 0, edge_numVerts);
 		glBindVertexArray(0);
+		glEnable(GL_DEPTH_TEST);
 
 		//Load the eyes to buffer
 		glBindBuffer(GL_ARRAY_BUFFER, vbo_eyes);
@@ -507,12 +501,18 @@ int main(int argc, char *argv[]) {
 		ImGui::SliderFloat("wide_mouth_open", &alpha[5], 0.0f, 1.0f);
 		ImGui::SliderFloat("frown", &alpha[6], 0.0f, 1.0f);
 
+		ImGui::Separator();
+		ImGui::SliderInt( "CSV frame", &frame_index, 0, max_frames - 1 );
+		if( ImGui::Button( "Recalculate" ) )
+			trigger_recalc = true;
+
 		if( s_selected_vert >= 0 ) {
 			ImGui::Separator();
 
 			PointData& selected_point = s_modified_points[s_selected_vert];
 
-			ImGui::Text( "Selected face vertex: %u", selected_point.id );
+			ImGui::Text( "Selected face vertex: %u (index: %d)", 
+				selected_point.id, s_selected_vert );
 			
 			glm::vec2 canon_pos( 
 				selected_point.orginal_pos + selected_point.offset );
@@ -532,7 +532,6 @@ int main(int argc, char *argv[]) {
 		ImGui::Render();
 		ImGui_ImplSdlGL3_RenderDrawData(ImGui::GetDrawData());
 
-		idx_loop++;
 		SDL_GL_SwapWindow(window);
 	}
 
@@ -546,6 +545,7 @@ int main(int argc, char *argv[]) {
 
 	free(face);
 	free(base_head);
+	free(bh_fpoint);
 	free(faces);
 	free(alpha);
 	free(point);

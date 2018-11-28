@@ -29,3 +29,8 @@ int select_closest_point( const PointData p_data[],
                           const float search_radius,
 						  const float x_pos,
 						  const float y_pos );
+
+Eigen::VectorXf calc_blend_values( blendcalc blend_data, 
+                                   Eigen::VectorXf feature_data,
+                                   uint face_count,
+                                   uint num_iterations );
