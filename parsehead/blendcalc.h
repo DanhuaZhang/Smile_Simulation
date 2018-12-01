@@ -24,13 +24,29 @@ struct PointData
     unsigned id;
 };
 
+// Returns the index of the closest point to x_pos & y_pos based on search
+// radius. Returns -1 on no match
 int select_closest_point( const PointData p_data[],
                           const unsigned p_data_count,
                           const float search_radius,
 						  const float x_pos,
 						  const float y_pos );
 
+// Calculates and return blend shape weights using target delta's set in
+// feature data (face_count = # of blend shape weights)
 Eigen::VectorXf calc_blend_values( blendcalc blend_data, 
                                    Eigen::VectorXf feature_data,
                                    uint face_count,
                                    uint num_iterations );
+
+// Get 2D eigen matrix from input file 
+Eigen::MatrixXf extract_matrix(const char *in_file);
+
+// Get 1D eigen vector from input file
+Eigen::VectorXf extract_vector(const char *in_file);
+
+// Neural net
+Eigen::VectorXf feedForward( Eigen::VectorXf &inputs,
+                             Eigen::MatrixXf weights[],
+                             Eigen::VectorXf biases[],
+                             uint layers_count);

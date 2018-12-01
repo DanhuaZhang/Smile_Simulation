@@ -232,14 +232,27 @@ int main(int argc, char *argv[]) {
 		s_modified_points[i].offset.y = 0.f;
 	}
 
+	// get neural net data: weights && biases
+	Eigen::MatrixXf nn_weights[] = { 
+		extract_matrix( ROOT_DIR "/nn_data/w0.csv" ),
+		extract_matrix( ROOT_DIR "/nn_data/w1.csv" ),
+		extract_matrix( ROOT_DIR "/nn_data/w2.csv" ) 
+	};
+
+	Eigen::VectorXf nn_biases[] = {
+		extract_vector( ROOT_DIR "/nn_data/b0.csv" ),
+		extract_vector( ROOT_DIR "/nn_data/b1.csv" ),
+		extract_vector( ROOT_DIR "/nn_data/b2.csv" )
+	};
+
 	bool show_window = false;
 	bool check_progress = false;
 	bool trigger_recalc = false;
 	Eigen::VectorXf Calc_X;
 	int frame_index = 0;
-	const uint max_frames = feature_csv.rows();
+	const uint max_frames = feature_csv.cols();
 
-	float scr_to_canon_w = scale * unit;
+	float scr_to_canon_w = scale;
 	float scr_to_canon_h = scr_to_canon_w * 
 		( (float)screen_height / (float)screen_width );
 	
@@ -275,14 +288,9 @@ int main(int argc, char *argv[]) {
 					for( int i = 0; i < edge_numVerts; i++ )
 					{
 						feature_pnt(i * 2) -= bh_fpoint[i].x + 
-							s_modified_points[i].offset.x * scr_to_canon_w * unit;
+							s_modified_points[i].offset.x * scr_to_canon_w;
 						feature_pnt(i * 2 + 1) -= bh_fpoint[i].y -
-							s_modified_points[i].offset.y * scr_to_canon_h * unit;
-
-						printf( "Feature x (%d): \n  original = %.5f\n  mine = %.5f\n", 
-						i,
-						bh_fpoint[i].x,
-						s_modified_points[i].offset.x * scr_to_canon_w * unit);
+							s_modified_points[i].offset.y * scr_to_canon_h;
 					}
 					// Spawn calculation on separate thread
 					s_async_blend_calc = std::async( std::launch::async, calc_blend_values, blendsys, feature_pnt, face_num, iter_num );
@@ -322,12 +330,6 @@ int main(int argc, char *argv[]) {
 
 		glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-		
-		// if (idx_loop < weights.cols()) {
-		// 	for (int i = 0; i < face_num; i++) {
-		// 		alpha[i] = weights(i, idx_loop);
-		// 	}
-		// }
 
 		for (int i = 0; i < model_numVerts * 8; i++) {
 			face[i] = base_head[i];
@@ -523,7 +525,6 @@ int main(int argc, char *argv[]) {
 		}
 
 		ImGui::InputText("frame", frame, sizeof(frame));
-		//printf("frame: %f\n", (float)atof(frame));
 
 		ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
 		ImGui::End();
