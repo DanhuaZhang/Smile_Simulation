@@ -21,7 +21,9 @@ struct PointData
 {
     glm::vec2 orginal_pos  = glm::vec2( 0.f );
     glm::vec2 offset = glm::vec2( 0.f );
-    unsigned id;
+    glm::vec2 rendered_offset = glm::vec2( 0.f );
+    glm::vec2 rendered_pos = glm::vec2( 0.f );
+    const char* id;
 };
 
 // Returns the index of the closest point to x_pos & y_pos based on search

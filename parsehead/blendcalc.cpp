@@ -15,7 +15,7 @@ int select_closest_point(const PointData p_data[],
 
 	for( int i = 0; i < p_data_count; i++ ) {
 		const float calc_dist = glm::distance( 
-			mouse_pos, p_data[i].orginal_pos + p_data[i].offset );
+			mouse_pos, p_data[i].rendered_pos + p_data[i].rendered_offset );
 
 		if( calc_dist <= search_radius && closest_point_radius > calc_dist ) {
 			closest_point_idx = i;
@@ -131,7 +131,7 @@ Eigen::VectorXf extract_vector(const char *in_file)
 			idx++;
 		}
 		
-		std::cout << out_vec << "\n";
+		//std::cout << out_vec << "\n";
 	}
 
 	return out_vec;

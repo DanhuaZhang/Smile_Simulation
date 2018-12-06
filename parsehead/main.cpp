@@ -2,6 +2,7 @@
 #include "blendcalc.h"
 #include "gpqp_solv.hpp"
 #include <future>
+#include <map>
 
 int screen_width = 1000;
 int screen_height = 600;
@@ -14,8 +15,8 @@ static float s_mouse_ypos = -1.f;
 
 static int s_selected_vert = -1;
 
-static void mouseClicked(float mx, float my);
-static void mouseDragged(float mx, float my);
+static void mouseClicked(float mx, float my, PointData p_data[]);
+static void mouseDragged(float mx, float my, PointData p_data[]);
 
 #ifdef _WIN32
 
@@ -33,11 +34,50 @@ static void create_console();
 // edge stores the bound of each facial feature
 // the basic points for canonical space, 1450 is used as origin and combine 3542 to make a line
 static const int edgeidx[] = { 
-	797, 133, 3542, 1450, 9807, 9928, 18028, 18150, 14813, 6565, 
-	12, 14116, 5853, 15909, 7669, 14928, 6675, 22524, 5643 
+	797, 
+	133, 
+	3542, 
+	1450, 
+	9807, 
+	9928, 
+	18028, 
+	18150, 
+	14813, 
+	6565, 
+	12, 
+	14116, 
+	5853, 
+	15909, 
+	7669, 
+	14928, 
+	6675, 
+	22524, 
+	5643 
 };
 
-static const unsigned edge_numVerts = sizeof( edgeidx ) / sizeof( int );
+static std::map<std::string, uint> s_features_map = {
+	{"Oral commisure (L)", 0},
+	{"Oral commisure (R)", 1},
+	{"Lateral canthus (L)", 2},
+	{"Lateral canthus (R)", 3},
+	{"Palpebral fissure (RU)", 4},
+	{"Palpebral fissure (RL)", 5},
+	{"Palpebral fissure (LU)", 6},
+	{"Palpebral fissure (LL)", 7},
+	{"Depressor (L)", 8},
+	{"Depressor (R)", 9},
+	{"Depressor (M)", 10},
+	{"Nasal ala (L)", 11},
+	{"Nasal ala (R)", 12},
+	{"Medial brow (L)", 13},
+	{"Medial brow (R)", 14},
+	{"Malar eminence (L)", 15},
+	{"Malar eminence (R)", 16},
+	{"Dental show (Top)", 17},
+	{"Dental show (Bottom)", 18}
+};
+
+static const unsigned edge_numVerts = sizeof( edgeidx )/ sizeof( int );
 
 static PointData s_modified_points[ edge_numVerts ];
 
@@ -176,8 +216,9 @@ int main(int argc, char *argv[]) {
 	}
 
 	//transfer to canonical space
-	trans = bh_fpoint[3];
-	scale = glm::distance(bh_fpoint[2], bh_fpoint[3]);
+	trans = bh_fpoint[s_features_map["Lateral canthus (R)"]];
+	scale = glm::distance(bh_fpoint[s_features_map["Lateral canthus (L)"]],
+		bh_fpoint[s_features_map["Lateral canthus (R)"]]);
 	for (int i = 0; i < edge_numVerts; i++) {
 		bh_fpoint[i] -= trans;
 		bh_fpoint[i] = bh_fpoint[i] / scale * unit;
@@ -197,8 +238,12 @@ int main(int argc, char *argv[]) {
 	
 	//Transfer to the canonical space
 	for (int j = 0; j < face_num; j++) {
-		trans = glm::vec2(blendsys.blend_a(6, j), blendsys.blend_a(7, j));
-		scale = glm::distance(trans, glm::vec2(blendsys.blend_a(4, j), blendsys.blend_a(5, j)));
+		trans = glm::vec2(
+			blendsys.blend_a(s_features_map["Lateral canthus (R)"] * 2, j), 
+			blendsys.blend_a(s_features_map["Lateral canthus (R)"] * 2 + 1, j));
+		scale = glm::distance(trans, glm::vec2(
+			blendsys.blend_a(s_features_map["Lateral canthus (L)"] * 2, j), 
+			blendsys.blend_a(s_features_map["Lateral canthus (L)"] * 2 + 1, j)));
 		for (int i = 0, k = 0; i < edge_numVerts * 2; i += 2, k++) {
 			//translate
 			blendsys.blend_a(i, j) -= trans.x;
@@ -222,14 +267,16 @@ int main(int argc, char *argv[]) {
 	GetCSVFile(feature_csv, CAN_DIR "/28162_s_canon.csv", edge_numVerts);
 	blendsys.blend_b = feature_csv.block(1, 0, feature_csv.rows() - 1, 1);
 
-	// initialize modified_points array for face
-	for( int i = 0; i < edge_numVerts; i++ ) {
-		s_modified_points[i].id = edgeidx[i];
-		s_modified_points[i].orginal_pos.x = blendsys.blend_b(2 * i);
-		s_modified_points[i].orginal_pos.y = blendsys.blend_b(2 * i + 1);
+	// initialize s_modified_points array for face
+	for( const auto& key_val : s_features_map ) {
+		s_modified_points[key_val.second].id = key_val.first.c_str();
+		s_modified_points[key_val.second].orginal_pos.x = 
+			blendsys.blend_b(2 * key_val.second);
+		s_modified_points[key_val.second].orginal_pos.y = 
+			blendsys.blend_b(2 * key_val.second + 1);
 
-		s_modified_points[i].offset.x = 0.f;
-		s_modified_points[i].offset.y = 0.f;
+		s_modified_points[key_val.second].offset.x = 0.f;
+		s_modified_points[key_val.second].offset.y = 0.f;
 	}
 
 	// get neural net data: weights && biases
@@ -247,7 +294,10 @@ int main(int argc, char *argv[]) {
 
 	bool show_window = false;
 	bool check_progress = false;
-	bool trigger_recalc = false;
+	bool trigger_recalc = true;
+	bool new_frame = true;
+	bool set_original_pos = true;
+	
 	Eigen::VectorXf Calc_X;
 	int frame_index = 0;
 	const uint max_frames = feature_csv.cols();
@@ -271,19 +321,28 @@ int main(int argc, char *argv[]) {
 
 			//reset
 			if (windowEvent.type == SDL_KEYUP && windowEvent.key.keysym.sym == SDLK_r) {
-				for( unsigned i = 0; i < edge_numVerts; i++ ) {
-					s_modified_points[i].offset.x = s_modified_points[i].offset.y = 0.f;
-				}
+				trigger_recalc = new_frame = true;
 			}
 
+			// calculate
 			if ( (windowEvent.type == SDL_KEYUP && windowEvent.key.keysym.sym ==
 				 SDLK_c) || trigger_recalc ) 
 			{
-				trigger_recalc = false;
-
 				if( !check_progress )
 				{
-					Eigen::VectorXf feature_pnt = feature_csv.block(1, frame_index, feature_csv.rows() - 1, 1);
+					Eigen::VectorXf feature_pnt = feature_csv.block(
+						1, frame_index, feature_csv.rows() - 1, 1);
+
+					if( new_frame ) {
+						for( int i = 0; i < edge_numVerts; i++ )
+							s_modified_points[i].rendered_offset.x = 
+								s_modified_points[i].rendered_offset.y = 
+								s_modified_points[i].offset.x = 
+								s_modified_points[i].offset.y = 0;
+						
+						new_frame = false;
+						set_original_pos = true;
+					}
 
 					for( int i = 0; i < edge_numVerts; i++ )
 					{
@@ -291,11 +350,15 @@ int main(int argc, char *argv[]) {
 							s_modified_points[i].offset.x * scr_to_canon_w;
 						feature_pnt(i * 2 + 1) -= bh_fpoint[i].y -
 							s_modified_points[i].offset.y * scr_to_canon_h;
+						
+						s_modified_points[i].rendered_offset.x = 
+							s_modified_points[i].rendered_offset.y = 0.f; 
 					}
 					// Spawn calculation on separate thread
 					s_async_blend_calc = std::async( std::launch::async, calc_blend_values, blendsys, feature_pnt, face_num, iter_num );
 					
 					check_progress = true;
+					trigger_recalc = false;
 				}
 			}
 
@@ -304,7 +367,8 @@ int main(int argc, char *argv[]) {
 
 		if( check_progress )
 		{
-			if (s_async_blend_calc.wait_for(std::chrono::seconds( 0 )) == std::future_status::ready) 
+			if (s_async_blend_calc.wait_for(std::chrono::seconds( 0 )) == 
+				std::future_status::ready) 
 			{
 				Calc_X = s_async_blend_calc.get();
 				for (int i = 0; i < face_num; i++)
@@ -317,10 +381,10 @@ int main(int argc, char *argv[]) {
 		int mx, my;
 		if (SDL_GetMouseState(&mx, &my) & SDL_BUTTON(SDL_BUTTON_LEFT)) {
 			if (s_mouse_down == false){
-				mouseClicked( (float)mx, (float)(screen_height - my));
+				mouseClicked( (float)mx, (float)(screen_height - my), s_modified_points);
 			} 
 			else{
-				mouseDragged((float)mx, (float)(screen_height - my));
+				mouseDragged((float)mx, (float)(screen_height - my), s_modified_points);
 			}
 			s_mouse_down = true;
 		} 
@@ -370,16 +434,23 @@ int main(int argc, char *argv[]) {
 				point[idx], point[idx + 1], point[idx + 2], 1.0 );
 			NDC_space = clip_space / clip_space.w;
 
-			s_modified_points[i].orginal_pos.x = 
-				( NDC_space.x + 1.f ) * half_width;
-			s_modified_points[i].orginal_pos.y = 
+			s_modified_points[i].rendered_pos.x = 
+					( NDC_space.x + 1.f ) * half_width;
+			s_modified_points[i].rendered_pos.y = 
 				( NDC_space.y + 1.f ) * half_height;
+			
+			if( set_original_pos ) {
+				s_modified_points[i].orginal_pos = 
+					s_modified_points[i].rendered_pos;
+			}
 
 			// transform offset in clip space
 			float ndc_offset_w = 
-				(( s_modified_points[i].offset.x / (float)screen_width ) * 2.f);
+				(( s_modified_points[i].rendered_offset.x / 
+					(float)screen_width ) * 2.f);
 			float ndc_offset_h = 
-				(( s_modified_points[i].offset.y / (float)screen_height ) * 2.f);
+				(( s_modified_points[i].rendered_offset.y / 
+					(float)screen_height ) * 2.f);
 
 			// modify rendered position
 			point[idx] = clip_space.x + (ndc_offset_w * clip_space.w);
@@ -387,6 +458,7 @@ int main(int argc, char *argv[]) {
 			point[idx + 2] = clip_space.z;
 			point[idx + 3] = clip_space.w;
 		}
+		set_original_pos = false; // clear flag after all positions are updated
 
 		if( s_mouse_down ) {
 			s_selected_vert = select_closest_point( 
@@ -492,7 +564,8 @@ int main(int argc, char *argv[]) {
 
 		ImGui::Text("The parameters to adjust the facial features.\n");
 		ImGui::Text("Press key 's' to start auto-face.\n");
-		ImGui::Text("Press key 'r' to reset (neutral face).\n");
+		ImGui::Text("Press key 'r' to clear modifications.\n");
+		ImGui::Text("Press key 'c' to calculate new expression.\n");
 		ImGui::Text("After reset, the last parameters will show up\n");
 		ImGui::Text("in the command window.\n");
 		ImGui::SliderFloat("open_smile", &alpha[0], 0.0f, 1.0f);
@@ -504,16 +577,17 @@ int main(int argc, char *argv[]) {
 		ImGui::SliderFloat("frown", &alpha[6], 0.0f, 1.0f);
 
 		ImGui::Separator();
-		ImGui::SliderInt( "CSV frame", &frame_index, 0, max_frames - 1 );
-		if( ImGui::Button( "Recalculate" ) )
+		if( ImGui::SliderInt( "CSV frame", &frame_index, 0, max_frames - 1 ) ) {
 			trigger_recalc = true;
+			new_frame = true;
+		}
 
 		if( s_selected_vert >= 0 ) {
 			ImGui::Separator();
 
 			PointData& selected_point = s_modified_points[s_selected_vert];
 
-			ImGui::Text( "Selected face vertex: %u (index: %d)", 
+			ImGui::Text( "Selected face vertex: %s (index: %d)", 
 				selected_point.id, s_selected_vert );
 			
 			glm::vec2 canon_pos( 
@@ -554,19 +628,21 @@ int main(int argc, char *argv[]) {
 	return 0;
 }
 
-static void mouseClicked(float m_x, float m_y) {
+static void mouseClicked(float m_x, float m_y, PointData p_data[]) {
 	s_mouse_xpos = m_x;
 	s_mouse_ypos = m_y;
 }
 
-static void mouseDragged(float m_x, float m_y) {
+static void mouseDragged(float m_x, float m_y, PointData p_data[]) {
 	s_mouse_xpos = m_x;
 	s_mouse_ypos = m_y;
 
 	if( s_selected_vert >= 0 ){
-		s_modified_points[s_selected_vert].offset = 
-			glm::vec2( m_x, m_y ) - 
-			s_modified_points[s_selected_vert].orginal_pos;
+		p_data[s_selected_vert].offset = 
+			glm::vec2( m_x, m_y ) - p_data[s_selected_vert].orginal_pos;
+
+		p_data[s_selected_vert].rendered_offset = 
+			glm::vec2( m_x, m_y ) - p_data[s_selected_vert].rendered_pos;
 	}
 }
 
