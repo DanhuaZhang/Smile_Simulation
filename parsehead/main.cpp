@@ -33,26 +33,26 @@ static void create_console();
 
 // edge stores the bound of each facial feature
 // the basic points for canonical space, 1450 is used as origin and combine 3542 to make a line
-static const int edgeidx[] = { 
-	797, 
-	133, 
-	3542, 
-	1450, 
-	9807, 
-	9928, 
-	18028, 
-	18150, 
-	14813, 
-	6565, 
-	12, 
-	14116, 
-	5853, 
-	15909, 
-	7669, 
-	14928, 
-	6675, 
-	22524, 
-	5643 
+static const int edgeidx[] = {
+	797,
+	133,
+	3542,
+	1450,
+	9807,
+	9928,
+	18028,
+	18150,
+	14813,
+	6565,
+	12,
+	14116,
+	5853,
+	15909,
+	7669,
+	14928,
+	6675,
+	22524,
+	5643
 };
 
 static std::map<std::string, uint> s_features_map = {
@@ -81,6 +81,8 @@ static const unsigned edge_numVerts = sizeof( edgeidx )/ sizeof( int );
 
 static PointData s_modified_points[ edge_numVerts ];
 
+static FeatureControl s_face_controls;
+
 std::future<Eigen::VectorXf> s_async_blend_calc;
 
 int main(int argc, char *argv[]) {
@@ -95,7 +97,7 @@ int main(int argc, char *argv[]) {
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 4);
 	SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
 	SDL_Window* window = SDL_CreateWindow("Smile_Simulation", 100, 50, screen_width, screen_height, SDL_WINDOW_OPENGL);
-	float aspect = screen_width / (float)screen_height; 
+	float aspect = screen_width / (float)screen_height;
 
 	SDL_GLContext context = SDL_GL_CreateContext(window);
 
@@ -134,7 +136,7 @@ int main(int argc, char *argv[]) {
 	faces[6] = ParseObj(MESH_DIR "/frown.obj", model_numVerts, edgeidx, edge, 6, edge_numVerts);
 
 	//Load eye model
-	GLuint tex1 = AllocateTexture(TEX_DIR "/eye_BaseColor.bmp", 1);	
+	GLuint tex1 = AllocateTexture(TEX_DIR "/eye_BaseColor.bmp", 1);
 	int eye_numVerts = 0;
 	int irisidx[] = { 257, 286 }; //257 is iris(L), 286 is iris(M)
 	int iris_numVerts = sizeof(irisidx) / sizeof(int);
@@ -157,9 +159,9 @@ int main(int argc, char *argv[]) {
 
 	GLuint ShaderProgram = InitShader(SHADER_DIR "/vertexTex.glsl", SHADER_DIR "/fragmentTex.glsl");
 	GLuint PointShaderProgram = InitShader(SHADER_DIR "/vertex.glsl", SHADER_DIR "/fragment.glsl");
-	
+
 	glEnable(GL_DEPTH_TEST);
-	
+
 	// Setup Dear ImGui binding
 	IMGUI_CHECKVERSION();
 	ImGui::CreateContext();
@@ -185,7 +187,7 @@ int main(int argc, char *argv[]) {
 	GLuint uniView = glGetUniformLocation(ShaderProgram, "view");
 	GLuint uniModel = glGetUniformLocation(ShaderProgram, "model");
 	GLint uniTexID = glGetUniformLocation(ShaderProgram, "texID");
-	
+
 	glm::vec3 inColor;
 	float line_width = 2.0f;
 	glLineWidth(line_width);
@@ -229,20 +231,20 @@ int main(int argc, char *argv[]) {
 	//Transfer the feature points into a perspective plane
 	blendsys.blend_a = Eigen::MatrixXf(edge_numVerts * 2, face_num);
 	for (int j = 0; j < face_num; j++) {
-		for (int i = 0, k = 0; i < edge_numVerts * 2; i += 2, k++) {		
+		for (int i = 0, k = 0; i < edge_numVerts * 2; i += 2, k++) {
 			glm::vec4 temp = Xbox_camera * glm::vec4(edge[j][k] * face_ratio, 1.0);
 			blendsys.blend_a(i, j) = temp.x;
 			blendsys.blend_a(i + 1, j) = temp.y;
 		}
 	}
-	
+
 	//Transfer to the canonical space
 	for (int j = 0; j < face_num; j++) {
 		trans = glm::vec2(
-			blendsys.blend_a(s_features_map["Lateral canthus (R)"] * 2, j), 
+			blendsys.blend_a(s_features_map["Lateral canthus (R)"] * 2, j),
 			blendsys.blend_a(s_features_map["Lateral canthus (R)"] * 2 + 1, j));
 		scale = glm::distance(trans, glm::vec2(
-			blendsys.blend_a(s_features_map["Lateral canthus (L)"] * 2, j), 
+			blendsys.blend_a(s_features_map["Lateral canthus (L)"] * 2, j),
 			blendsys.blend_a(s_features_map["Lateral canthus (L)"] * 2 + 1, j)));
 		for (int i = 0, k = 0; i < edge_numVerts * 2; i += 2, k++) {
 			//translate
@@ -267,12 +269,22 @@ int main(int argc, char *argv[]) {
 	GetCSVFile(feature_csv, CAN_DIR "/28162_s_canon.csv", edge_numVerts);
 	blendsys.blend_b = feature_csv.block(1, 0, feature_csv.rows() - 1, 1);
 
+	// read neural net input data
+	NN_DataInput nn_input = read_nn_data(
+		ROOT_DIR "/nn_data/28162_s_nn_input.csv" );
+
+	print_nn_data( &nn_input );
+
+	s_face_controls.mouth_width = nn_input.per_frame_data[0].mouth_width;
+	s_face_controls.mouth_height = nn_input.per_frame_data[0].mouth_height;
+	s_face_controls.commisure_angle = nn_input.per_frame_data[0].commisure_angle;
+
 	// initialize s_modified_points array for face
 	for( const auto& key_val : s_features_map ) {
 		s_modified_points[key_val.second].id = key_val.first.c_str();
-		s_modified_points[key_val.second].orginal_pos.x = 
+		s_modified_points[key_val.second].orginal_pos.x =
 			blendsys.blend_b(2 * key_val.second);
-		s_modified_points[key_val.second].orginal_pos.y = 
+		s_modified_points[key_val.second].orginal_pos.y =
 			blendsys.blend_b(2 * key_val.second + 1);
 
 		s_modified_points[key_val.second].offset.x = 0.f;
@@ -280,10 +292,10 @@ int main(int argc, char *argv[]) {
 	}
 
 	// get neural net data: weights && biases
-	Eigen::MatrixXf nn_weights[] = { 
+	Eigen::MatrixXf nn_weights[] = {
 		extract_matrix( ROOT_DIR "/nn_data/w0.csv" ),
 		extract_matrix( ROOT_DIR "/nn_data/w1.csv" ),
-		extract_matrix( ROOT_DIR "/nn_data/w2.csv" ) 
+		extract_matrix( ROOT_DIR "/nn_data/w2.csv" )
 	};
 
 	Eigen::VectorXf nn_biases[] = {
@@ -297,15 +309,15 @@ int main(int argc, char *argv[]) {
 	bool trigger_recalc = true;
 	bool new_frame = true;
 	bool set_original_pos = true;
-	
+
 	Eigen::VectorXf Calc_X;
 	int frame_index = 0;
-	const uint max_frames = feature_csv.cols();
+	uint max_frames = feature_csv.cols();
 
 	float scr_to_canon_w = scale;
-	float scr_to_canon_h = scr_to_canon_w * 
+	float scr_to_canon_h = scr_to_canon_w *
 		( (float)screen_height / (float)screen_width );
-	
+
 	scr_to_canon_w = 1.f / scr_to_canon_w;
 	scr_to_canon_h = 1.f / scr_to_canon_h;
 
@@ -326,7 +338,7 @@ int main(int argc, char *argv[]) {
 
 			// calculate
 			if ( (windowEvent.type == SDL_KEYUP && windowEvent.key.keysym.sym ==
-				 SDLK_c) || trigger_recalc ) 
+				 SDLK_c) || trigger_recalc )
 			{
 				if( !check_progress )
 				{
@@ -335,28 +347,28 @@ int main(int argc, char *argv[]) {
 
 					if( new_frame ) {
 						for( int i = 0; i < edge_numVerts; i++ )
-							s_modified_points[i].rendered_offset.x = 
-								s_modified_points[i].rendered_offset.y = 
-								s_modified_points[i].offset.x = 
+							s_modified_points[i].rendered_offset.x =
+								s_modified_points[i].rendered_offset.y =
+								s_modified_points[i].offset.x =
 								s_modified_points[i].offset.y = 0;
-						
+
 						new_frame = false;
 						set_original_pos = true;
 					}
 
 					for( int i = 0; i < edge_numVerts; i++ )
 					{
-						feature_pnt(i * 2) -= bh_fpoint[i].x + 
+						feature_pnt(i * 2) -= bh_fpoint[i].x +
 							s_modified_points[i].offset.x * scr_to_canon_w;
 						feature_pnt(i * 2 + 1) -= bh_fpoint[i].y -
 							s_modified_points[i].offset.y * scr_to_canon_h;
-						
-						s_modified_points[i].rendered_offset.x = 
-							s_modified_points[i].rendered_offset.y = 0.f; 
+
+						s_modified_points[i].rendered_offset.x =
+							s_modified_points[i].rendered_offset.y = 0.f;
 					}
 					// Spawn calculation on separate thread
 					s_async_blend_calc = std::async( std::launch::async, calc_blend_values, blendsys, feature_pnt, face_num, iter_num );
-					
+
 					check_progress = true;
 					trigger_recalc = false;
 				}
@@ -367,8 +379,8 @@ int main(int argc, char *argv[]) {
 
 		if( check_progress )
 		{
-			if (s_async_blend_calc.wait_for(std::chrono::seconds( 0 )) == 
-				std::future_status::ready) 
+			if (s_async_blend_calc.wait_for(std::chrono::seconds( 0 )) ==
+				std::future_status::ready)
 			{
 				Calc_X = s_async_blend_calc.get();
 				for (int i = 0; i < face_num; i++)
@@ -382,12 +394,12 @@ int main(int argc, char *argv[]) {
 		if (SDL_GetMouseState(&mx, &my) & SDL_BUTTON(SDL_BUTTON_LEFT)) {
 			if (s_mouse_down == false){
 				mouseClicked( (float)mx, (float)(screen_height - my), s_modified_points);
-			} 
+			}
 			else{
 				mouseDragged((float)mx, (float)(screen_height - my), s_modified_points);
 			}
 			s_mouse_down = true;
-		} 
+		}
 		else{
 			s_mouse_down = false;
 		}
@@ -426,7 +438,41 @@ int main(int argc, char *argv[]) {
 		const float half_width = ( screen_width / 2.f );
 		const float half_height = ( screen_height / 2.f );
 		glm::vec4 NDC_space, clip_space;
-		
+
+		if( s_mouse_down ) {
+			s_selected_vert = select_closest_point(
+				s_modified_points,
+				(int)edge_numVerts,
+				10.f,
+				s_mouse_xpos,
+				s_mouse_ypos );
+
+			unsigned mouth_corner_l = s_features_map["Oral commisure (L)"];
+			unsigned mouth_corner_r = s_features_map["Oral commisure (R)"];
+
+			// if( s_selected_vert == mouth_corner_l ||
+			// 	s_selected_vert == mouth_corner_r ) {
+
+			// 	Eigen::VectorXf v4( 4 );
+
+			// 	v4(0) = point[ mouth_corner_l * 4 ];
+			// 	v4(1) = point[ mouth_corner_l * 4 + 1 ];
+			// 	v4(2) = point[ mouth_corner_r * 4 ];
+			// 	v4(3) = point[ mouth_corner_r * 4 + 1 ];
+
+			// 	Eigen::VectorXf prediction =
+			// 		feed_forward( v4, nn_weights, nn_biases, nn_layers_count );
+
+			// 	std::cout << "Prediction (" << prediction.size() << "):\n" <<
+			// 		prediction << std::endl;
+
+			// 	for (int i = 0; i < nn_outp; ++i)
+			// 	{
+			// 		//
+			// 	}
+			// }
+		}
+
 		for( int i = 0; i < edge_numVerts; i++ ) {
 			const unsigned idx = i * 4;
 
@@ -434,22 +480,22 @@ int main(int argc, char *argv[]) {
 				point[idx], point[idx + 1], point[idx + 2], 1.0 );
 			NDC_space = clip_space / clip_space.w;
 
-			s_modified_points[i].rendered_pos.x = 
+			s_modified_points[i].rendered_pos.x =
 					( NDC_space.x + 1.f ) * half_width;
-			s_modified_points[i].rendered_pos.y = 
+			s_modified_points[i].rendered_pos.y =
 				( NDC_space.y + 1.f ) * half_height;
-			
+
 			if( set_original_pos ) {
-				s_modified_points[i].orginal_pos = 
+				s_modified_points[i].orginal_pos =
 					s_modified_points[i].rendered_pos;
 			}
 
 			// transform offset in clip space
-			float ndc_offset_w = 
-				(( s_modified_points[i].rendered_offset.x / 
+			float ndc_offset_w =
+				(( s_modified_points[i].rendered_offset.x /
 					(float)screen_width ) * 2.f);
-			float ndc_offset_h = 
-				(( s_modified_points[i].rendered_offset.y / 
+			float ndc_offset_h =
+				(( s_modified_points[i].rendered_offset.y /
 					(float)screen_height ) * 2.f);
 
 			// modify rendered position
@@ -460,25 +506,16 @@ int main(int argc, char *argv[]) {
 		}
 		set_original_pos = false; // clear flag after all positions are updated
 
-		if( s_mouse_down ) {
-			s_selected_vert = select_closest_point( 
-				s_modified_points, 
-				(int)edge_numVerts, 
-				10.f,
-				s_mouse_xpos, 
-				s_mouse_ypos );
-		}
-
 		//Load the face model to buffer
 		glBindBuffer(GL_ARRAY_BUFFER, vbo_face);
 		glBufferData(GL_ARRAY_BUFFER, sizeof(float)*model_numVerts * 8, face, GL_STATIC_DRAW);
-		
+
 		//draw face
 		glUseProgram(ShaderProgram);
 		GLuint vao_face = LoadToVAO(ShaderProgram);
 		glActiveTexture(GL_TEXTURE0);
 		glBindTexture(GL_TEXTURE_2D, tex0);
-		glUniform1i(glGetUniformLocation(ShaderProgram, "tex0"), 0);	
+		glUniform1i(glGetUniformLocation(ShaderProgram, "tex0"), 0);
 		glUniform1i(uniTexID, 0);
 
 		glBindVertexArray(vao_face);
@@ -546,7 +583,7 @@ int main(int argc, char *argv[]) {
 		glUniform1i(glGetUniformLocation(ShaderProgram, "tex2"), 2);
 		glUniform1i(uniTexID, 2);
 
-		glBindVertexArray(vao_teeth);	
+		glBindVertexArray(vao_teeth);
 		glUniformMatrix4fv(uniProj, 1, GL_FALSE, glm::value_ptr(proj));
 		glUniformMatrix4fv(uniView, 1, GL_FALSE, glm::value_ptr(view));
 
@@ -557,7 +594,7 @@ int main(int argc, char *argv[]) {
 		glBindVertexArray(0);
 
 		static char frame[4] = { "20" };
-		
+
 		//draw the slidebar
 		ImGui_ImplSdlGL3_NewFrame(window);
 		ImGui::Begin("Face Parameters", &show_window);
@@ -582,15 +619,38 @@ int main(int argc, char *argv[]) {
 			new_frame = true;
 		}
 
+		ImGui::Separator();
+		ImGui::Text("Expression controls for mouth.\n");
+
+		const float control_offset = 0.1f;
+		ImGui::SliderFloat(
+			"Width",
+			&s_face_controls.mouth_width,
+			nn_input.min_input.mouth_width - control_offset,
+			nn_input.max_input.mouth_width + control_offset,
+			"%.5f" );
+		ImGui::SliderFloat(
+			"Height",
+			&s_face_controls.mouth_height,
+			nn_input.min_input.mouth_height - control_offset,
+			nn_input.max_input.mouth_height + control_offset,
+			"%.5f" );
+		ImGui::SliderFloat(
+			"Corner angle",
+			&s_face_controls.commisure_angle,
+			nn_input.min_input.commisure_angle - control_offset,
+			nn_input.max_input.commisure_angle + control_offset,
+			"%.5f radians" );
+
 		if( s_selected_vert >= 0 ) {
 			ImGui::Separator();
 
 			PointData& selected_point = s_modified_points[s_selected_vert];
 
-			ImGui::Text( "Selected face vertex: %s (index: %d)", 
+			ImGui::Text( "Selected face vertex: %s (index: %d)",
 				selected_point.id, s_selected_vert );
-			
-			glm::vec2 canon_pos( 
+
+			glm::vec2 canon_pos(
 				selected_point.orginal_pos + selected_point.offset );
 			ImGui::InputFloat2( "2D screen pos", &canon_pos[0] );
 			selected_point.offset = canon_pos - selected_point.orginal_pos;
@@ -638,10 +698,10 @@ static void mouseDragged(float m_x, float m_y, PointData p_data[]) {
 	s_mouse_ypos = m_y;
 
 	if( s_selected_vert >= 0 ){
-		p_data[s_selected_vert].offset = 
+		p_data[s_selected_vert].offset =
 			glm::vec2( m_x, m_y ) - p_data[s_selected_vert].orginal_pos;
 
-		p_data[s_selected_vert].rendered_offset = 
+		p_data[s_selected_vert].rendered_offset =
 			glm::vec2( m_x, m_y ) - p_data[s_selected_vert].rendered_pos;
 	}
 }

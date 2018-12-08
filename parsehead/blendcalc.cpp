@@ -2,6 +2,11 @@
 #include "gpqp_solv.hpp"
 #include <cmath>
 #include <float.h>
+#include <cassert>
+#include <cstdio>
+
+#define MAX( x, y ) ( ( x > y ) ? ( x ) : ( y ) )
+#define MIN( x, y ) ( ( x < y ) ? ( x ) : ( y ) )
 
 int select_closest_point(const PointData p_data[],
 						 const unsigned p_data_count,
@@ -14,7 +19,7 @@ int select_closest_point(const PointData p_data[],
 	const glm::vec2 mouse_pos( x_pos, y_pos );
 
 	for( int i = 0; i < p_data_count; i++ ) {
-		const float calc_dist = glm::distance( 
+		const float calc_dist = glm::distance(
 			mouse_pos, p_data[i].rendered_pos + p_data[i].rendered_offset );
 
 		if( calc_dist <= search_radius && closest_point_radius > calc_dist ) {
@@ -26,7 +31,7 @@ int select_closest_point(const PointData p_data[],
 	return closest_point_idx;
 }
 
-Eigen::VectorXf calc_blend_values( blendcalc blend_data, 
+Eigen::VectorXf calc_blend_values( blendcalc blend_data,
                                    Eigen::VectorXf feature_data,
                                    uint face_count,
                                    uint num_iterations )
@@ -40,7 +45,7 @@ Eigen::VectorXf calc_blend_values( blendcalc blend_data,
 	Eigen::VectorXf x_ub = Eigen::VectorXf::Ones(face_count);
 
 	blend_data.blend_x = GPQPSolver::Solve(blend_data.blend_a, blend_data.blend_b, x_lb, x_ub, x_0, num_iterations);
-	
+
 	// store calculated weights
 	for (int i = 0; i < face_count; i++) {
 		X(i) = blend_data.blend_x(i);
@@ -130,7 +135,7 @@ Eigen::VectorXf extract_vector(const char *in_file)
 			keep_reading = (bool)getline( &line, &line_size, vec_file);
 			idx++;
 		}
-		
+
 		//std::cout << out_vec << "\n";
 	}
 
@@ -138,14 +143,14 @@ Eigen::VectorXf extract_vector(const char *in_file)
 }
 
 
-Eigen::VectorXf feedForward( Eigen::VectorXf &inputs,
+Eigen::VectorXf feed_forward( Eigen::VectorXf &inputs,
                              Eigen::MatrixXf weights[],
                              Eigen::VectorXf biases[],
                              uint layers_count)
 {
 	// inputs are assumed normalized where appropriate
 	// convert to row vector
-	
+
 	Eigen::VectorXf layerin = inputs;
 	for (int i = 0; i < layers_count; i++) {
 		if (weights[i].rows() != layerin.size()) {
@@ -153,11 +158,11 @@ Eigen::VectorXf feedForward( Eigen::VectorXf &inputs,
 					<< i << "!!";
 			std::cout << "Input size: " << layerin.size()
 					<< ", expected size: " << weights[i].rows() << std::endl;
-			
+
 			assert( weights[i].rows() != layerin.size() );
 		}
 		layerin = weights[i].transpose() * layerin + biases[i];
-		
+
 		// component wise RELU
 		if (i < layers_count - 1) {
 			for (int j = 0; j < layerin.size(); j++) {
@@ -165,11 +170,90 @@ Eigen::VectorXf feedForward( Eigen::VectorXf &inputs,
 			}
 		}
 	}
-	
+
 	Eigen::VectorXf output = Eigen::VectorXf::Zero(layerin.size());
-	
+
 	for (int i = 0; i < layerin.size(); i++) {
 		output[i] = layerin[i];
 	}
 	return output;
+}
+
+NN_DataInput read_nn_data( const char* path_to_nn_input )
+{
+	NN_DataInput data_out;
+
+	FILE* file_ptr = fopen( path_to_nn_input, "r" );
+	assert( file_ptr && feof( file_ptr ) == 0 && ferror( file_ptr ) == 0 );
+
+	char line[1024];
+
+	// first line provide # of frames
+	fgets( line, sizeof(line), file_ptr );
+	assert( feof( file_ptr ) == 0 && ferror( file_ptr ) == 0 );
+
+	unsigned frame_count = (unsigned)strtol( line, nullptr, 10 );
+	assert( frame_count > 0 );
+
+	data_out.per_frame_data =
+		(FeatureControl*)malloc( frame_count * sizeof( FeatureControl ) );
+	assert( data_out.per_frame_data );
+	data_out.frame_count = frame_count;
+
+	unsigned data_idx = 0;
+	float data_w, data_h, data_a;
+	while( data_idx < frame_count )
+	{
+		fscanf( file_ptr, "%f %f %f", &data_w, &data_h, &data_a );
+
+		data_out.per_frame_data[data_idx] = { data_w, data_h, data_a };
+
+		if( data_idx == 0 )
+		{
+			data_out.min_input = { data_w, data_h, data_a };
+			data_out.max_input = { data_w, data_h, data_a };
+		}
+		else
+		{
+			data_out.min_input.mouth_width =
+				MIN( data_out.min_input.mouth_width, data_w );
+			data_out.min_input.mouth_height =
+				MIN( data_out.min_input.mouth_height, data_h );
+			data_out.min_input.commisure_angle =
+				MIN( data_out.min_input.commisure_angle, data_a );
+
+			data_out.max_input.mouth_width =
+				MAX( data_out.max_input.mouth_width, data_w );
+			data_out.max_input.mouth_height =
+				MAX( data_out.max_input.mouth_height, data_h );
+			data_out.max_input.commisure_angle =
+				MAX( data_out.max_input.commisure_angle, data_a );
+		}
+
+		data_idx++;
+	}
+
+	fclose( file_ptr );
+
+	return data_out;
+}
+
+void print_nn_data( const NN_DataInput* nn_data )
+{
+	printf("> Frame min %.3f, %.3f, %.3f\n",
+		nn_data->min_input.mouth_width,
+		nn_data->min_input.mouth_height,
+		nn_data->min_input.commisure_angle );
+
+	printf("> Frame max %.3f, %.3f, %.3f\n",
+		nn_data->max_input.mouth_width,
+		nn_data->max_input.mouth_height,
+		nn_data->max_input.commisure_angle );
+
+	for (unsigned i = 0; i < nn_data->frame_count; i++)
+		printf( ">  Frame %u: %.3f, %.3f, %.3f\n",
+			i,
+			nn_data->per_frame_data[i].mouth_width,
+			nn_data->per_frame_data[i].mouth_height,
+			nn_data->per_frame_data[i].commisure_angle );
 }
